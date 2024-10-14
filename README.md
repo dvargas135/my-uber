@@ -56,7 +56,7 @@ Each component is run as a separate process and can be executed on different mac
 Start the dispatcher on one machine:
 
 ```bash
-python src/dispatcher.py <N> <M>
+python -m src.dispatcher <N> <M>
 ```
 
 Where `<N>` and `<M>` are the dimensions of the city grid (e.g., 10 10 for a 10x10 grid).
@@ -66,7 +66,7 @@ Where `<N>` and `<M>` are the dimensions of the city grid (e.g., 10 10 for a 10x
 Run the taxis on one or more machines:
 
 ```bash
-python src/taxi.py <taxi_id> <N> <M> <pos_x> <pos_y> <speed>
+python -m src.taxi <taxi_id> <N> <M> <pos_x> <pos_y> <speed>
 ```
 
 - `<taxi_id>`: Unique identifier for the taxi.
@@ -80,12 +80,21 @@ python src/taxi.py <taxi_id> <N> <M> <pos_x> <pos_y> <speed>
 Run the user generator to create service requests:
 
 ```bash
-python src/user.py <Y> <N> <M> <coordinates_file>
+python -m src.user <Y> <N> <M> <coordinates_file>
 ```
 
 - `<Y>`: Number of users.
 - `<N>` and `<M>`: Dimensions of the grid.
 - `<coordinates_file>`: Text file containing the initial coordinates of the users.
+
+The **users** file goes with the following format: `pos_x, pos_y, timeout`.
+
+Example of `users.txt`:
+```
+5,4,5
+3,2,8
+2,9,10
+```
 
 ## Configuration
 

@@ -6,7 +6,7 @@ class RichConsoleUtils:
     def __init__(self):
         self.console = Console()
 
-    def print(self, message, level=1, show_level=True, end="\n"):
+    def print(self, message, level=1, show_level=False, end="\n"):
         levels = {
             1: ("INFO", "bold blue"),
             2: ("WARNING", "bold yellow"),
@@ -35,8 +35,14 @@ class RichConsoleUtils:
             table.add_column(column, justify="center")
         return table
 
+    def generate_table(self, title, columns, data):
+        table = self.create_table(title, columns)
+        for row_data in data:
+            table.add_row(*[str(item) for item in row_data])
+        return table
+
     def update_live_table(self, table, data, live_display):
-        existing_rows = {row.cells[0].text: row for row in table.rows}
+        table.rows.clear()
 
         for row_data in data:
             taxi_id = str(row_data[0])
@@ -46,15 +52,7 @@ class RichConsoleUtils:
             status = str(row_data[4])
             connected = str(row_data[5])
 
-            if taxi_id in existing_rows:
-                row_index = table.rows.index(existing_rows[taxi_id])
-                table.rows[row_index].cells[1].text = pos_x
-                table.rows[row_index].cells[2].text = pos_y
-                table.rows[row_index].cells[3].text = speed
-                table.rows[row_index].cells[4].text = status
-                table.rows[row_index].cells[5].text = connected
-            else:
-                table.add_row(taxi_id, pos_x, pos_y, speed, status, connected)
+            table.add_row(taxi_id, pos_x, pos_y, speed, status, connected)
 
         live_display.update(table)
 

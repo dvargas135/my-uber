@@ -1,6 +1,22 @@
 from src.models.grid_model import Grid
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, TIMESTAMP
+from sqlalchemy.orm import relationship
+from src.services.database_service import Base
 
-class Taxi:
+class Taxi(Base):
+    __tablename__ = 'taxis'  # Name of the table in the database
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    taxi_id = Column(String(50), unique=True, nullable=False)
+    pos_x = Column(Integer, nullable=False)
+    pos_y = Column(Integer, nullable=False)
+    speed = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False)
+    connected = Column(Boolean, default=False)
+
+    assignments = relationship("Assignment", back_populates="taxi")
+    heartbeats = relationship("Heartbeat", back_populates="taxi")
+
     def __init__(self, taxi_id, N, M, pos_x, pos_y, speed, status, connected=False):
         self.taxi_id = taxi_id
         self.initial_pos_x = pos_x

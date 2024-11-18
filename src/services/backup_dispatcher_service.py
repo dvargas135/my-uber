@@ -33,6 +33,10 @@ class BackupDispatcherService:
 
         self.initialize_dispatcher_state()
         self.main_dispatcher_alive = True
+
+        self.taxi_thread = None
+        self.user_thread = None
+        self.position_thread = None
     
         def monitor_main_dispatcher(self):
             HEARTBEAT_THRESHOLD = 30
@@ -55,6 +59,21 @@ class BackupDispatcherService:
                 except Exception as e:
                     self.console_utils.print(f"Error in monitoring main dispatcher: {e}", 3)
                 time.sleep(MONITOR_INTERVAL)
+
+    def run_backup_dispatcher():
+        backup_dispatcher = BackupDispatcherService(...)
+        
+        # Activate the backup dispatcher
+        backup_dispatcher.activate_backup_dispatcher()
+        
+        try:
+            while True:
+                # Implement your failover detection logic here
+                # For simplicity, we'll keep the backup dispatcher active indefinitely
+                time.sleep(1)
+        except KeyboardInterrupt:
+            # Deactivate the backup dispatcher on interruption
+            backup_dispatcher.deactivate_backup_dispatcher()
 
     def handle_taxi_requests(self):
         responder = self.zmq_utils.bind_rep_socket()
@@ -135,7 +154,6 @@ class BackupDispatcherService:
         finally:
             if responder:
                 responder.close()
-
 
     def handle_user_requests(self):
         responder = self.user_req_socket
@@ -397,6 +415,58 @@ class BackupDispatcherService:
         finally:
             session.close()
 
+    def activate_backup_dispatcher(self):
+        # Clear the stop event in case it was previously set
+        self.stop_event.clear()
+        
+        # Initialize and start threads
+        self.taxi_thread = Thread(target=self.handle_taxi_requests, name="ConnectionHandler")
+        self.user_thread = Thread(target=self.handle_user_requests, name="UserRequestHandler")
+        self.position_thread = Thread(target=self.receive_position_updates, name="PositionUpdater")
+        self.heartbeat_thread = Thread(target=self.receive_heartbeat, name="HeartbeatReceiver")
+        self.monitor_thread = Thread(target=self.monitor_heartbeats, name="HeartbeatMonitor")
+        self.health_monitor_thread = Thread(target=self.monitor_main_dispatcher, name="HealthMonitorHandler")
+        
+        # Set daemon to False to ensure threads are managed properly
+        self.taxi_thread.daemon = False
+        self.user_thread.daemon = False
+        self.position_thread.daemon = False
+        self.heartbeat_thread.daemon = False
+        self.monitor_thread.daemon = False
+        self.health_monitor_thread.daemon = False
+        
+        # Start all threads
+        self.taxi_thread.start()
+        self.user_thread.start()
+        self.position_thread.start()
+        self.heartbeat_thread.start()
+        self.monitor_thread.start()
+        self.health_monitor_thread.start()
+        
+        # Optional: Log activation
+        self.console_utils.print("Backup dispatcher activated and is now handling requests.", 2)
+    
+    def deactivate_backup_dispatcher(self):
+        # Signal threads to stop
+        self.stop_event.set()
+        
+        # Wait for threads to finish execution
+        if self.taxi_thread is not None:
+            self.taxi_thread.join()
+        if self.user_thread is not None:
+            self.user_thread.join()
+        if self.position_thread is not None:
+            self.position_thread.join()
+        if self.heartbeat_thread is not None:
+            self.heartbeat_thread.join()
+        if self.monitor_thread is not None:
+            self.monitor_thread.join()
+        if self.health_monitor_thread is not None:
+            self.health_monitor_thread.join()
+        
+        # Optional: Log deactivation
+        self.console_utils.print("Backup dispatcher deactivated and has stopped handling requests.", 2)
+    
     def run(self):
         if not validate_grid(self.system.grid.rows, self.system.grid.cols, self.console_utils):
             self.console_utils.print(f"Dispatcher failed to start due to invalid parameters.", 3)
@@ -406,52 +476,19 @@ class BackupDispatcherService:
             with self.console_utils.start_live_display(self.table) as live:
                 self.live = live
 
-                # Start HealthCheck threads
-                #self.health_check.start_dispatcher_health_check()
-
-                # Existing threads
-                taxi_thread = Thread(target=self.handle_taxi_requests, name="ConnectionHandler")
-                updates_thread = Thread(target=self.receive_position_updates, name="PositionUpdater")
-                heartbeat_thread = Thread(target=self.receive_heartbeat, name="HeartbeatReceiver")
-                monitor_thread = Thread(target=self.monitor_heartbeats, name="HeartbeatMonitor")
-                user_thread = Thread(target=self.handle_user_requests, name="UserRequestHandler")
-                health_monitor_thread = Thread(target=self.monitor_main_dispatcher, name="HealthMonitorHandler")
-
-                # Set daemon to False to ensure threads are managed properly
-                taxi_thread.daemon = False
-                updates_thread.daemon = False
-                heartbeat_thread.daemon = False
-                monitor_thread.daemon = False
-                user_thread.daemon = False
-                health_monitor_thread.daemon = False
-
-                # Start all threads
-                taxi_thread.start()
-                updates_thread.start()
-                heartbeat_thread.start()
-                monitor_thread.start()
-                user_thread.start()
-                health_monitor_thread.start()
-
+                # Activate the backup dispatcher (starts all threads)
+                self.activate_backup_dispatcher()
+    
                 while not self.stop_event.is_set():
-                    taxi_thread.join(timeout=1)
-                    updates_thread.join(timeout=1)
-                    heartbeat_thread.join(timeout=1)
-                    monitor_thread.join(timeout=1)
-                    user_thread.join(timeout=1)
-                    health_monitor_thread.join(timeout=1)
-
+                    time.sleep(1)  # Keep the main thread alive
+    
         except KeyboardInterrupt:
-            self.console_utils.print("Central Dispatcher process interrupted by user.", 2)
+            self.console_utils.print("Backup Dispatcher process interrupted by user.", 2)
             self.stop_event.set()
-
+    
         finally:
+            # Deactivate the backup dispatcher (signals threads to stop and joins them)
+            self.deactivate_backup_dispatcher()
             self.console_utils.print("Cleaning up dispatcher resources...", 2)
-            taxi_thread.join()
-            updates_thread.join()
-            heartbeat_thread.join()
-            monitor_thread.join()
-            user_thread.join()
-            health_monitor_thread.join()
             self.zmq_utils.close()
-            self.console_utils.print("Central Dispatcher process ended and resources cleaned up.", 4)
+            self.console_utils.print("Backup Dispatcher process ended and resources cleaned up.", 4)

@@ -25,8 +25,8 @@ MAX_N = 1000
 MAX_M = 1000
 
 # MySQL Database Configuration
-DB_USER = "your_db_username"
-DB_PASSWORD = "your_db_password"
-DB_HOST = "localhost"
+DB_USER = "root"
+DB_PASSWORD = "123456789"
+DB_HOST = "192.168.1.13"
 DB_PORT = "3306"
 DB_NAME = "taxi_dispatch"

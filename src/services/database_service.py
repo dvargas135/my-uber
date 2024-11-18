@@ -8,21 +8,21 @@ Base = declarative_base()
 
 # Define ORM models corresponding to the database tables
 
-class Taxi(Base):
-    __tablename__ = 'taxis'
+# class Taxi(Base):
+#     __tablename__ = 'taxis'
     
-    taxi_id = Column(Integer, primary_key=True)
-    pos_x = Column(Integer, nullable=False)
-    pos_y = Column(Integer, nullable=False)
-    speed = Column(Integer, nullable=False)
-    status = Column(String(20), nullable=False)
-    connected = Column(Boolean, default=True)
-    stopped = Column(Boolean, default=False)
-    last_updated = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+#     taxi_id = Column(Integer, primary_key=True)
+#     pos_x = Column(Integer, nullable=False)
+#     pos_y = Column(Integer, nullable=False)
+#     speed = Column(Integer, nullable=False)
+#     status = Column(String(20), nullable=False)
+#     connected = Column(Boolean, default=True)
+#     stopped = Column(Boolean, default=False)
+#     last_updated = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
     
-    # Relationships
-    assignments = relationship("Assignment", back_populates="taxi")
-    heartbeats = relationship("Heartbeat", back_populates="taxi")
+#     # Relationships
+#     assignments = relationship("Assignment", back_populates="taxi")
+#     heartbeats = relationship("Heartbeat", back_populates="taxi")
 
 
 class User(Base):

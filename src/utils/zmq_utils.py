@@ -1,19 +1,22 @@
 import zmq
 
 class ZMQUtils:
-    def __init__(self, dispatcher_ip, pub_port, sub_port, rep_port, pull_port):
+    def __init__(self, dispatcher_ip, pub_port, sub_port, rep_port, pull_port, heartbeat_port):
         self.context = zmq.Context()
         self.dispatcher_ip = dispatcher_ip
         self.pub_port = pub_port
         self.sub_port = sub_port
         self.rep_port = rep_port
         self.pull_port = pull_port
+        self.heartbeat_port = heartbeat_port
         self.publisher = None
         self.subscriber = None
         self.requester = None
         self.responder = None
         self.puller = None
         self.pusher = None
+        self.heartbeat_puller = None
+        self.heartbeat_pusher = None
 
     def bind_pub_socket(self):
         self.publisher = self.context.socket(zmq.PUB)
@@ -45,6 +48,27 @@ class ZMQUtils:
         self.pusher = self.context.socket(zmq.PUSH)
         self.pusher.connect(f"tcp://{self.dispatcher_ip}:{self.pull_port}")
         return self.pusher
+
+    def bind_pull_heartbeat_socket(self):
+        self.heartbeat_puller = self.context.socket(zmq.PULL)
+        self.heartbeat_puller.bind(f"tcp://*:{self.heartbeat_port}")
+        return self.heartbeat_puller
+
+    def connect_push_heartbeat(self):
+        self.heartbeat_pusher = self.context.socket(zmq.PUSH)
+        self.heartbeat_pusher.connect(f"tcp://{self.dispatcher_ip}:{self.heartbeat_port}")
+        return self.heartbeat_pusher
+    
+    def bind_rep_user_request_socket(self, port):
+        socket = self.context.socket(zmq.REP)
+        socket.bind(f"tcp://*:{port}")
+        return socket
+    
+    def publish_assignment(self, message):
+        pub_socket = self.context.socket(zmq.PUB)
+        pub_socket.connect(f"tcp://{self.dispatcher_ip}:{self.pub_port}")
+        pub_socket.send_string(message)
+        pub_socket.close()
     
     def disconnect_pub(self):
         if self.publisher:
@@ -75,4 +99,8 @@ class ZMQUtils:
             self.puller.close()
         if self.pusher:
             self.pusher.close()
+        if self.heartbeat_puller:
+            self.heartbeat_puller.close()
+        if self.heartbeat_pusher:
+            self.heartbeat_pusher.close()
         self.context.term()

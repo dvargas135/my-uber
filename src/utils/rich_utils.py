@@ -29,16 +29,32 @@ class RichConsoleUtils:
         else:
             self.console.print(formatted_message, end=end, highlight=False)"""
 
-    def create_table(self, title, columns):
+    def create_table(self, title, columns, styles=None):
         table = Table(title=title)
         for column in columns:
-            table.add_column(column, justify="center")
+            if styles and column in styles:
+                if column not in ["Status", "Connected"]:
+                    table.add_column(column, justify="center", style=styles[column])
+                else:
+                    table.add_column(column, justify="center")
+            else:
+                table.add_column(column, justify="center")
         return table
 
-    def generate_table(self, title, columns, data):
-        table = self.create_table(title, columns)
+    def generate_table(self, title, columns, data, styles=None):
+        header_styles = {
+            "Taxi ID": "cyan",
+            "Position X": "magenta",
+            "Position Y": "magenta",
+            "Speed": "yellow",
+            # Exclude "Status" and "Connected" from header styles
+        }
+
+        table = self.create_table(title, columns, styles=header_styles)
+
         for row_data in data:
-            table.add_row(*[str(item) for item in row_data])
+            table.add_row(*row_data)
+
         return table
 
     def update_live_table(self, table, data, live_display):
@@ -49,10 +65,29 @@ class RichConsoleUtils:
             pos_x = str(row_data[1])
             pos_y = str(row_data[2])
             speed = str(row_data[3])
-            status = str(row_data[4])
-            connected = str(row_data[5])
+            status = row_data[4]
+            connected = row_data[5]
 
-            table.add_row(taxi_id, pos_x, pos_y, speed, status, connected)
+            if status.lower() == "available":
+                status_colored = "[light_green]active[/light_green]"
+            elif connected:
+                connected_colored = "[light_green]True[/light_green]"
+            elif status.lower() == "unavailable":
+                status_colored = "[red]unavailable[/red]"
+            elif not connected:
+                connected_colored = "[red]False[/red]"
+            else:
+                status_colored = status
+                connected_colored = "True" if connected else "False"
+
+            table.add_row(
+                taxi_id,
+                pos_x,
+                pos_y,
+                speed,
+                status_colored,
+                connected_colored
+            )
 
         live_display.update(table)
 

@@ -416,12 +416,8 @@ class BackupDispatcherService:
             print(2)
             activate_thread.daemon = False
             activate_thread.start()
-            while not self.stop_event.is_set():
-                print(3)
-                activate_thread.join(timeout=1)
             print(3)
         finally:
-            
             activate_thread.join()
             print(4)
 

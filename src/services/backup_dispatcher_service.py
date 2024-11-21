@@ -410,17 +410,23 @@ class BackupDispatcherService:
         if not validate_grid(self.system.grid.rows, self.system.grid.cols, self.console_utils):
             self.console_utils.print(f"Dispatcher failed to start due to invalid parameters.", 3)
             return
-        
+        print(1)
         try:
             activate_thread = Thread(target=self.activate, name="ActivationHandler")
+            print(2)
             activate_thread.daemon = False
             activate_thread.start()
             while not self.stop_event.is_set():
+                print(3)
                 activate_thread.join(timeout=1)
+            print(3)
         finally:
+            
             activate_thread.join()
+            print(4)
 
         while self.main_dispatcher_offline:
+            print(5)
             try:
                 with self.console_utils.start_live_display(self.table) as live:
                     self.live = live

@@ -4,7 +4,7 @@ import time
 from threading import Thread, Event, Lock
 from src.models.system_model import System
 from src.models.taxi_model import Taxi
-from src.config import PUB_PORT, SUB_PORT, REP_PORT, DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME
+from src.config import PUB_PORT, SUB_PORT, REP_PORT, DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME, BACKUP_ACTIVATION_PORT
 from src.utils.rich_utils import RichConsoleUtils
 from src.utils.validation_utils import validate_grid
 from src.utils.zmq_utils import ZMQUtils

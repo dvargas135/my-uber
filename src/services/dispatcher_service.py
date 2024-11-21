@@ -4,10 +4,11 @@ import time
 from threading import Thread, Event, Lock
 from src.models.system_model import System
 from src.models.taxi_model import Taxi
-from src.config import PUB_PORT, SUB_PORT, REP_PORT, DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT
+from src.config import PUB_PORT, SUB_PORT, REP_PORT, DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME
 from src.utils.rich_utils import RichConsoleUtils
 from src.utils.validation_utils import validate_grid
 from src.utils.zmq_utils import ZMQUtils
+from src.utils.db_handler import DatabaseHandler
 from src.services.database_service import DatabaseService
 from src.config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
 
@@ -28,10 +29,12 @@ class DispatcherService:
 
         self.assignment_lock = Lock()
 
-        db_url = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-        self.db_service = DatabaseService(db_url)
+        #db_url = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        #self.db_service = DatabaseService(db_url)
 
-        self.initialize_dispatcher_state()
+        self.db_handler = DatabaseHandler(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME)
+
+        # self.initialize_dispatcher_state()
 
     def handle_taxi_requests(self):
         responder = self.zmq_utils.bind_rep_socket()
@@ -58,15 +61,16 @@ class DispatcherService:
                                 responder.send_string("invalid_request")
                                 continue
 
-                            if taxi_id not in self.system.taxis:
+                            # if taxi_id not in self.system.taxis:
+                            if not self.db_handler.taxi_exists(taxi_id):
                                 # Register new taxi in-memory
                                 taxi = Taxi(taxi_id, self.system.grid.rows, self.system.grid.cols, pos_x, pos_y, speed, status, True)
                                 taxi.initial_pos_x = pos_x
                                 taxi.initial_pos_y = pos_y
-                                self.system.register_taxi(taxi)
+                                # self.system.register_taxi(taxi)
                                 
                                 # Add taxi to the database
-                                self.db_service.add_taxi(
+                                self.db_handler.add_taxi(
                                     taxi_id=taxi_id,
                                     pos_x=pos_x,
                                     pos_y=pos_y,
@@ -78,24 +82,25 @@ class DispatcherService:
                                 self.console_utils.print(f"Taxi {taxi_id} connected at ({pos_x}, {pos_y}) with speed {speed}.")
                             else:
                                 # Update existing taxi in-memory
-                                taxi = self.system.taxis[taxi_id]
-                                taxi.pos_x = pos_x
-                                taxi.pos_y = pos_y
-                                taxi.speed = speed
-                                taxi.status = status
-                                taxi.connected = True  # Mark as connected upon reconnection
+                                # taxi = self.system.taxis[taxi_id]
+                                # taxi.pos_x = pos_x
+                                # taxi.pos_y = pos_y
+                                # taxi.speed = speed
+                                # taxi.status = status
+                                # taxi.connected = True  # Mark as connected upon reconnection
                                 
                                 # Update taxi in the database
-                                self.db_service.update_taxi_position(taxi_id, pos_x, pos_y)
-                                self.db_service.set_taxi_status(taxi_id, status)
-                                self.db_service.update_taxi_connected_status(taxi_id, connected=True)
+                                self.db_handler.update_taxi_position(taxi_id, pos_x, pos_y)
+                                self.db_handler.set_taxi_status(taxi_id, status)
+                                self.db_handler.update_taxi_connected_status(taxi_id, connected=True)
                                 
                                 responder.send_string(f"connect_ack {taxi_id}")
-                                self.console_utils.print(f"Taxi {taxi_id} reconnected and updated.")
+                                # self.console_utils.print(f"Taxi {taxi_id} reconnected and updated.")
 
                             # Update Heartbeat Timestamp
                             with self.heartbeat_lock:
                                 self.heartbeat_timestamps[taxi_id] = time.time()
+                                self.db_handler.record_heartbeat(taxi_id)
 
                             self.refresh_table()
 
@@ -140,7 +145,7 @@ class DispatcherService:
                             self.console_utils.print(f"Received ride request from User {user_id} at ({user_x}, {user_y})", 2)
 
                             # Log user request in the database
-                            self.db_service.add_user_request(user_id, user_x, user_y, waiting_time=30)  # Example waiting_time
+                            self.db_handler.add_user_request(user_id, user_x, user_y, waiting_time=30)  # Example waiting_time
 
                             # Find the nearest available taxi
                             assigned_taxi = self.find_nearest_available_taxi(user_x, user_y)
@@ -150,7 +155,7 @@ class DispatcherService:
                                     # Double-check if the taxi is still available
                                     if assigned_taxi.connected and assigned_taxi.status.lower() == "available":
                                         # Assign the taxi in the database
-                                        self.db_service.assign_taxi_to_user(user_id, assigned_taxi.taxi_id)
+                                        self.db_handler.assign_taxi_to_user(user_id, assigned_taxi.taxi_id)
 
                                         # Update in-memory taxi status
                                         assigned_taxi.connected = False  # Mark as occupied
@@ -189,7 +194,7 @@ class DispatcherService:
     def find_nearest_available_taxi(self, user_x, user_y):
         with self.assignment_lock:
             # Fetch available taxis from the database
-            available_taxis = self.db_service.get_available_taxis()
+            available_taxis = self.db_handler.get_available_taxis()
             if not available_taxis:
                 return None
             # Calculate Manhattan distance and sort
@@ -202,8 +207,10 @@ class DispatcherService:
         self.console_utils.print(f"Taxi {taxi_id} is servicing User {user_id} for {duration} seconds.", 2)
         time.sleep(duration)
         # After service completion, mark the taxi as available and reset position
-        if taxi_id in self.system.taxis:
-            taxi = self.system.taxis[taxi_id]
+        # if taxi_id in self.system.taxis:
+        if self.db_handler.taxi_exists(taxi_id):
+            # taxi = self.system.taxis[taxi_id]
+            taxi = self.db_handler.get_taxi_by_id(taxi_id)
             taxi.status = "available"
             taxi.connected = True
             taxi.pos_x = taxi.initial_pos_x
@@ -214,8 +221,8 @@ class DispatcherService:
             self.console_utils.print(f"Taxi {taxi_id} has completed service for User {user_id} and is now available at ({taxi.pos_x}, {taxi.pos_y}).", 2)
             
             # Update the database to mark the taxi as available and reset position
-            self.db_service.mark_taxi_available(taxi_id)
-            self.db_service.update_taxi_position(taxi_id, taxi.pos_x, taxi.pos_y)
+            self.db_handler.mark_taxi_available(taxi_id)
+            self.db_handler.update_taxi_position(taxi_id, taxi.pos_x, taxi.pos_y)
         else:
             self.console_utils.print(f"Taxi {taxi_id} not found during service simulation.", 3)
 
@@ -240,15 +247,16 @@ class DispatcherService:
                             self.console_utils.print(f"Invalid data types in position update message: {message}", 3)
                             continue
 
-                        if taxi_id in self.system.taxis:
+                        # if taxi_id in self.system.taxis:
+                        if self.db_handler.taxi_exists(taxi_id):
                             # Update in-memory position
-                            self.system.update_taxi_position(taxi_id, pos_x, pos_y)
+                            # self.system.update_taxi_position(taxi_id, pos_x, pos_y)
                             
                             # Update position in the database
-                            self.db_service.update_taxi_position(taxi_id, pos_x, pos_y)
+                            self.db_handler.update_taxi_position(taxi_id, pos_x, pos_y)
                             
                             # Optionally, record a heartbeat for the taxi
-                            self.db_service.record_heartbeat(taxi_id)
+                            self.db_handler.record_heartbeat(taxi_id)
                         else:
                             self.console_utils.print(f"Taxi {taxi_id} not found, cannot update position", 3)
 
@@ -264,38 +272,45 @@ class DispatcherService:
             if puller:
                 puller.close()
 
-
     def refresh_table(self):
         taxi_data = []
-        for taxi_id, taxi in self.system.taxis.items():
+        taxis = self.db_handler.get_all_taxis()
+        # for taxi_id, taxi in self.system.taxis.items():
+        for taxi in taxis:
+            taxi_id = taxi[0]
+            pos_x = taxi[1]
+            pos_y = taxi[2]
+            speed = taxi[3]
+            status = taxi[4]
+            connected = taxi[5]
 
-            if isinstance(taxi.status, str):
-                status_lower = taxi.status.lower()
+            if isinstance(status, str):
+                status_lower = status.lower()
                 if status_lower == "available":
                     status_str = "[light_green]Available[/light_green]"
                 elif status_lower == "unavailable":
                     status_str = "[red]Unavailable[/red]"
                 else:
-                    status_str = f"[yellow]{taxi.status}[/yellow]"
+                    status_str = f"[yellow]{status}[/yellow]"
             else:
-                status_str = f"[yellow]{taxi.status}[/yellow]"
+                status_str = f"[yellow]{status}[/yellow]"
 
-            if isinstance(taxi.connected, bool):
-                if taxi.connected:
+            if isinstance(connected, bool):
+                if connected == 1:
                     connected_str = "[light_green]True[/light_green]"
                 else:
                     connected_str = "[red]False[/red]"
             else:
-                connected_str = f"[yellow]{taxi.connected}[/yellow]"
+                connected_str = f"[yellow]{connected}[/yellow]"
 
             # Optional: Commented out to reduce console clutter
             # self.console_utils.print(f"Styled Status: {status_str}, Styled Connected: {connected_str}", show_level=False)
 
             taxi_data.append([
                 str(taxi_id),
-                str(taxi.pos_x),
-                str(taxi.pos_y),
-                str(taxi.speed),
+                str(pos_x),
+                str(pos_y),
+                str(speed),
                 status_str,
                 connected_str,
             ])
@@ -307,6 +322,15 @@ class DispatcherService:
         )
 
         self.live.update(table)
+
+    def handle_heartbeats(self):
+        while True:
+            try:
+                message = self.heartbeat_socket.recv_string()
+                if message == "heartbeat":
+                    self.heartbeat_socket.send_string("heartbeat_ack")
+            except zmq.ZMQError as e:
+                self.console_utils.print(f"Heartbeat handler error: {e}", 3)
     
     def receive_heartbeat(self):
         try:
@@ -325,11 +349,11 @@ class DispatcherService:
                         except ValueError:
                             self.console_utils.print(f"Invalid taxi_id in heartbeat message: {message}", 3)
                             continue
-
+                            
                         with self.heartbeat_lock:
                             self.heartbeat_timestamps[taxi_id] = time.time()
-                            if taxi_id in self.system.taxis:
-                                self.system.taxis[taxi_id].connected = True
+                            if self.db_handler.taxi_exists(taxi_id):
+                                self.db_handler.update_taxi_connected_status(taxi_id, True)
                                 # self.console_utils.print(f"Received heartbeat from Taxi {taxi_id}", show_level=False)
                             else:
                                 self.console_utils.print(f"Heartbeat from unknown Taxi {taxi_id}", 3)
@@ -347,15 +371,17 @@ class DispatcherService:
 
     def monitor_heartbeats(self):
         HEARTBEAT_INTERVAL = 5
-        TIMEOUT = 15
+        TIMEOUT = 10
 
         while not self.stop_event.is_set():
             current_time = time.time()
             with self.heartbeat_lock:
                 for taxi_id, last_hb in list(self.heartbeat_timestamps.items()):
                     if current_time - last_hb > TIMEOUT:
-                        if taxi_id in self.system.taxis:
-                            self.system.taxis[taxi_id].connected = False
+                        # if taxi_id in self.system.taxis:
+                        if self.db_handler.taxi_exists(taxi_id):
+                            # self.system.taxis[taxi_id].connected = False
+                            self.db_handler.update_taxi_connected_status(taxi_id, connected=False)
                             # self.console_utils.print(f"Taxi {taxi_id} disconnected due to missed heartbeats.", 3)
                             self.refresh_table()
                         del self.heartbeat_timestamps[taxi_id]
@@ -363,7 +389,7 @@ class DispatcherService:
     
     def initialize_dispatcher_state(self):
         # Fetch all taxis from the database and populate the in-memory system
-        session = self.db_service.get_session()
+        session = self.db_handler.get_session()
         try:
             taxis = session.query(Taxi).all()
             for taxi in taxis:
@@ -383,29 +409,26 @@ class DispatcherService:
             with self.console_utils.start_live_display(self.table) as live:
                 self.live = live
 
-                # Start HealthCheck threads
-                #self.health_check.start_dispatcher_health_check()
-
-                # Existing threads
                 taxi_thread = Thread(target=self.handle_taxi_requests, name="ConnectionHandler")
                 updates_thread = Thread(target=self.receive_position_updates, name="PositionUpdater")
                 heartbeat_thread = Thread(target=self.receive_heartbeat, name="HeartbeatReceiver")
                 monitor_thread = Thread(target=self.monitor_heartbeats, name="HeartbeatMonitor")
                 user_thread = Thread(target=self.handle_user_requests, name="UserRequestHandler")
+                handle_heartbeats_thread = Thread(target=self.handle_heartbeats, name= "HandlHeartbeatsHandler")
 
-                # Set daemon to False to ensure threads are managed properly
                 taxi_thread.daemon = False
                 updates_thread.daemon = False
                 heartbeat_thread.daemon = False
                 monitor_thread.daemon = False
                 user_thread.daemon = False
+                handle_heartbeats_thread.daemon = False
 
-                # Start all threads
                 taxi_thread.start()
                 updates_thread.start()
                 heartbeat_thread.start()
                 monitor_thread.start()
                 user_thread.start()
+                hhandle_heartbeats_thread.start()
 
                 while not self.stop_event.is_set():
                     taxi_thread.join(timeout=1)
@@ -413,6 +436,7 @@ class DispatcherService:
                     heartbeat_thread.join(timeout=1)
                     monitor_thread.join(timeout=1)
                     user_thread.join(timeout=1)
+                    handle_heartbeats_thread.join(timeout=1)
 
         except KeyboardInterrupt:
             self.console_utils.print("Central Dispatcher process interrupted by user.", 2)
@@ -425,6 +449,7 @@ class DispatcherService:
             heartbeat_thread.join()
             monitor_thread.join()
             user_thread.join()
-            #self.health_check.stop()
+            handle_heartbeats_thread.join()
             self.zmq_utils.close()
+            self.db_handler.close()
             self.console_utils.print("Central Dispatcher process ended and resources cleaned up.", 4)

@@ -1,4 +1,5 @@
 import zmq
+import threading
 
 class ZMQUtils:
     def __init__(self, dispatcher_ip, pub_port, sub_port, rep_port, pull_port, heartbeat_port):
@@ -17,6 +18,8 @@ class ZMQUtils:
         self.pusher = None
         self.heartbeat_puller = None
         self.heartbeat_pusher = None
+        self.socket_ready = threading.Condition()
+        self.socket_initialized = False
 
     def bind_pub_socket(self):
         self.publisher = self.context.socket(zmq.PUB)
@@ -85,6 +88,38 @@ class ZMQUtils:
     def disconnect_rep(self):
         if self.responder:
             self.responder.close()
+
+    def recreate_all_sockets(self, taxi_id=None, topic=None):
+        """Closes all existing sockets and recreates fresh ones."""
+        self.close()  # Ensure all existing sockets are properly closed
+
+        # Reinitialize the context
+        self.context = zmq.Context()
+
+        # Reinitialize all socket attributes to None
+        self.publisher = None
+        self.subscriber = None
+        self.requester = None
+        self.responder = None
+        self.puller = None
+        self.pusher = None
+        self.heartbeat_puller = None
+        self.heartbeat_pusher = None
+
+        # Recreate sockets
+        self.connect_push()
+        if topic is not None:
+            self.connect_sub(topic=topic)
+        self.connect_push_heartbeat()
+
+        # Notify all waiting threads that sockets are ready
+        with self.socket_ready:
+            self.socket_initialized = True
+            self.socket_ready.notify_all()
+
+        print("All sockets have been recreated.")
+
+
 
     def close(self):
         if self.publisher:

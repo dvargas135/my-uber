@@ -1,5 +1,5 @@
 # ZeroMQ Configuration
-DISPATCHER_IP = "localhost"
+DISPATCHER_IP = "192.168.1.12"
 PUB_PORT = 5555
 SUB_PORT = 5556
 REP_PORT = 5557

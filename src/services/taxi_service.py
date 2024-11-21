@@ -75,8 +75,6 @@ class TaxiService:
                     )
                     time.sleep(2)
 
-                    if retry_count == 5:
-                        
                 requester.close()
 
             except zmq.ZMQError as e:
@@ -143,7 +141,7 @@ class TaxiService:
                     time.sleep(2)
 
                     if retry_count == 5:
-
+                        self.connect_to_backup_dispatcher()
 
                 requester.close()
 

@@ -414,7 +414,7 @@ class BackupDispatcherService:
             self.console_utils.print(f"Dispatcher failed to start due to invalid parameters.", 3)
             return
         
-        activate_thread = Thread(target=self.activate, "ActivationHandler")
+        activate_thread = Thread(target=self.activate, name="ActivationHandler")
         activate_thread.daemon = False
         activate_thread.start()
 

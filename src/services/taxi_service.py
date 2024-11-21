@@ -2,14 +2,13 @@ import zmq
 import time
 import os
 import random
-from threading import Event, Thread
-from src.config import DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT
+from threading import Event, Thread, Lock, Condition
+from src.config import DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT, BACKUP_DISPATCHER_IP
 from src.models.taxi_model import Taxi
 from src.utils.rich_utils import RichConsoleUtils
 from src.models.grid_model import Grid
 from src.utils.validation_utils import validate_grid, validate_initial_position, validate_speed
 from src.utils.zmq_utils import ZMQUtils
-from src.services.database_service import DatabaseService
 from src.config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
 
 class TaxiService:
@@ -23,12 +22,82 @@ class TaxiService:
         self.msg = f"{self.taxi.taxi_id} {self.taxi.pos_x} {self.taxi.pos_y} {self.taxi.speed} {self.taxi.status}"
 
         self.heartbeat_pusher = self.zmq_utils.connect_push_heartbeat()
+        self.socket_lock = Lock()
+        self.socket_ready = Condition()
+        self.socket_initialized = False
+        self.connected = False
+    
+    def connect_to_backup_dispatcher(self, reconnect=False):
+        self.console_utils.print("Main dispatcher is offline, connecting to backup server")
+        self.zmq_utils.dispatcher_ip = BACKUP_DISPATCHER_IP
+        # connected = False
+        retry_count = 0
 
-        db_url = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-        self.db_service = DatabaseService(db_url)
+        if reconnect:
+            self.console_utils.print("Backup dispatcher inactive, attempting to reconnect...")
+        else:
+            self.console_utils.print("Connecting to Backup Dispatcher...")
+        
+        while not self.connected and not self.stop_event.is_set():
+            try:
+                with self.socket_lock:  # Synchronize socket recreation
+                    if reconnect:
+                        #self.console_utils.print("Recreating all sockets for reconnection...", 2)
+                        with self.socket_ready:
+                            self.socket_initialized = False
+                        self.zmq_utils.recreate_all_sockets(taxi_id=self.taxi.taxi_id, topic=str(self.taxi.taxi_id))
+
+                    self.zmq_utils.connect_push()
+                    self.zmq_utils.connect_sub(topic=str(self.taxi.taxi_id))
+
+                    requester = self.zmq_utils.connect_req()
+                    requester.send_string(f"connect_request {self.msg}")
+
+                if requester.poll(1000):
+                    response = requester.recv_string()
+                    if response == f"connect_ack {self.taxi.taxi_id}":
+                        if reconnect:
+                            self.console_utils.print(f"Successfully reconnected to Backup Dispatcher.", 4)
+                            with self.socket_lock:
+                                requester.send_string(f"{self.msg}")
+                            self.console_utils.print(f"Last position sent successfully: {self.taxi.pos_x} {self.taxi.pos_y}.", 4)
+                            self.connected = True
+                        else:
+                            self.console_utils.print(f"Successfully connected to Backup Dispatcher as Taxi {self.taxi.taxi_id}", 4)
+                        self.connected = True
+                    else:
+                        self.console_utils.print(f"Unexpected response from backup dispatcher: {response}", 3)
+                else:
+                    retry_count += 1
+                    self.console_utils.print(
+                        f"{'Re' if reconnect else ''}Connection attempt failed, retrying... [{retry_count}]",
+                        3, end="\r"
+                    )
+                    time.sleep(2)
+
+                    if retry_count == 5:
+                        
+                requester.close()
+
+            except zmq.ZMQError as e:
+                retry_count += 1
+                self.console_utils.print(
+                    f"Connection error on attempt {retry_count}: {e}. "
+                    f"Socket state: PUSH={self.zmq_utils.pusher}, "
+                    f"REQ={self.zmq_utils.requester}, "
+                    f"SUB={self.zmq_utils.subscriber}",
+                    3
+                )
+                time.sleep(2)
+            except Exception as e:
+                self.console_utils.print(
+                    f"Unexpected error during connection attempt: {e}", 3
+                )
+                time.sleep(2)
 
     def connect_to_dispatcher(self, reconnect=False):
-        connected = False
+        self.zmq_utils.dispatcher_ip = DISPATCHER_IP
+        # connected = False
         retry_count = 0
 
         if reconnect:
@@ -36,87 +105,94 @@ class TaxiService:
         else:
             self.console_utils.print("Connecting to Dispatcher...")
         
-        while not connected and not self.stop_event.is_set():
+        while not self.connected and not self.stop_event.is_set():
             try:
-                if reconnect:
-                    self.zmq_utils.disconnect_pub()
-                    self.zmq_utils.disconnect_sub()
+                with self.socket_lock:  # Synchronize socket recreation
+                    if reconnect:
+                        self.console_utils.print("Recreating all sockets for reconnection...", 2)
+                        with self.socket_ready:
+                            self.socket_initialized = False
+                        self.zmq_utils.recreate_all_sockets(taxi_id=self.taxi.taxi_id, topic=str(self.taxi.taxi_id))
 
-                self.zmq_utils.connect_push()
-                self.zmq_utils.connect_sub(topic=str(self.taxi.taxi_id))
+                    self.zmq_utils.connect_push()
+                    self.zmq_utils.connect_sub(topic=str(self.taxi.taxi_id))
 
-                requester = self.zmq_utils.connect_req()
-                requester.send_string(f"connect_request {self.msg}")
+                    requester = self.zmq_utils.connect_req()
+                    requester.send_string(f"connect_request {self.msg}")
 
                 if requester.poll(1000):
                     response = requester.recv_string()
                     if response == f"connect_ack {self.taxi.taxi_id}":
                         if reconnect:
                             self.console_utils.print(f"Successfully reconnected to Dispatcher.", 4)
-                            requester.send_string(f"{self.msg}")
+                            with self.socket_lock:
+                                requester.send_string(f"{self.msg}")
                             self.console_utils.print(f"Last position sent successfully: {self.taxi.pos_x} {self.taxi.pos_y}.", 4)
+                            self.connected = True
                         else:
                             self.console_utils.print(f"Successfully connected to Dispatcher as Taxi {self.taxi.taxi_id}", 4)
-                        connected = True
+                        self.connected = True
                     else:
                         self.console_utils.print(f"Unexpected response from dispatcher: {response}", 3)
                 else:
                     retry_count += 1
-                    if reconnect:
-                        self.console_utils.print(f"Reconnection attempt failed, retrying... [{retry_count}]", 3, end="\r")
-                    else:
-                        self.console_utils.print(f"Connection attempt failed, retrying... [{retry_count}]", 3, end="\r")
+                    self.console_utils.print(
+                        f"{'Re' if reconnect else ''}Connection attempt failed, retrying... [{retry_count}]",
+                        3, end="\r"
+                    )
                     time.sleep(2)
-                
-                self.db_service.add_taxi(
-                    taxi_id=self.taxi.taxi_id,
-                    pos_x=self.taxi.pos_x,
-                    pos_y=self.taxi.pos_y,
-                    speed=self.taxi.speed,
-                    status=self.taxi.status
-                )
+
+                    if retry_count == 5:
+
 
                 requester.close()
-                
-                if not connected:
-                    self.zmq_utils.disconnect_pub()
-                    self.zmq_utils.disconnect_sub()
-                    time.sleep(2)
 
             except zmq.ZMQError as e:
                 retry_count += 1
-                self.console_utils.print(f"Connection error: {e}, retrying... [{retry_count}]", 3, end="\r")
+                self.console_utils.print(
+                    f"Connection error on attempt {retry_count}: {e}. "
+                    f"Socket state: PUSH={self.zmq_utils.pusher}, "
+                    f"REQ={self.zmq_utils.requester}, "
+                    f"SUB={self.zmq_utils.subscriber}",
+                    3
+                )
+                time.sleep(2)
+            except Exception as e:
+                self.console_utils.print(
+                    f"Unexpected error during connection attempt: {e}", 3
+                )
                 time.sleep(2)
     
     def dispatcher_active(self):
         try:
             temp_requester = self.zmq_utils.connect_req()
             temp_requester.send_string(f"connect_request {self.msg}")
-            if temp_requester.poll(1000):
+            if temp_requester.poll(1000):  # Wait for a response
                 response = temp_requester.recv_string()
-                if response == "connect_ack {self.taxi.taxi_id}":
+                if response == f"connect_ack {self.taxi.taxi_id}":
                     temp_requester.close()
                     return True
             temp_requester.close()
-        except zmq.ZMQError:
-            pass
+        except zmq.ZMQError as e:
+            self.console_utils.print(f"Dispatcher check error: {e}", 3)
+        # self.connected = False
         return False
     
     def publish_position(self):
         try:
-            # Initial delay before starting movement
             time.sleep(30)
             while not self.stop_event.is_set() and not self.taxi.stopped:
+                # if not self.dispatcher_active():
+                #     print("send_heartbeat not self.publish_position()")
+                #     self.connect_to_dispatcher(reconnect=True)
                 try:
                     self.taxi.move_counter += 1
 
-                    # Determine the number of cells to move based on speed
                     if self.taxi.speed == 4:
                         cells_to_move = 2
                     elif self.taxi.speed == 2:
                         cells_to_move = 1
                     elif self.taxi.speed == 1:
-                        # For speed=1 km/h, move 1 cell every 2 intervals (60 seconds)
                         cells_to_move = 1 if self.taxi.move_counter % 2 == 0 else 0
                     else:
                         cells_to_move = 0
@@ -125,7 +201,6 @@ class TaxiService:
                         directions = ['NORTH', 'SOUTH', 'EAST', 'WEST']
                         valid_directions = []
 
-                        # Determine valid directions based on current position
                         for direction in directions:
                             if self.taxi.can_move(direction):
                                 valid_directions.append(direction)
@@ -135,11 +210,14 @@ class TaxiService:
                             self.taxi.stopped = True
                             break
 
-                        # Choose a random valid direction
                         direction = random.choice(valid_directions)
                         self.taxi.move(direction, cells_to_move)
 
-                        # Prepare and send the position update message
+                        if not self.dispatcher_active():
+                            # self.console_utils.print("Dispatcher inactive. Attempting to reconnect.", 3)
+                            self.connect_to_dispatcher(reconnect=True)
+                            continue
+
                         self.msg = f"{self.taxi.taxi_id} {self.taxi.pos_x} {self.taxi.pos_y} {self.taxi.speed} {self.taxi.status}"
                         self.zmq_utils.pusher.send_string(f"{self.msg}")
 
@@ -156,7 +234,6 @@ class TaxiService:
                     else:
                         self.console_utils.print(f"Taxi {self.taxi.taxi_id} did not move this interval.", level=2)
 
-                    # Sleep for 30 seconds before the next movement
                     time.sleep(30)
                 except zmq.ZMQError as e:
                     self.console_utils.print(f"Error publishing position: {e}", level=3)
@@ -173,13 +250,19 @@ class TaxiService:
         try:
             while not self.stop_event.is_set():
                 try:
-                    if self.zmq_utils.subscriber.poll(1000):
+                    # Wait for sockets to be ready
+                    with self.socket_ready:
+                        while not self.socket_initialized:
+                            self.socket_ready.wait()
+
+                    if self.zmq_utils.subscriber and self.zmq_utils.subscriber.poll(1000):  # Check for None
                         message = self.zmq_utils.subscriber.recv_string()
                         self.console_utils.print(f"Received message for Taxi {self.taxi.taxi_id}: {message}", show_level=False)
                 except zmq.ZMQError as e:
                     self.console_utils.print(f"Error receiving message: {e}", 3, end="\r")
         except zmq.ZMQError as e:
             self.console_utils.print(f"Error receiving message: {e}", 3, end="\r")
+
 
     def subscribe_to_assignments(self):
         subscriber = self.context.socket(zmq.SUB)
@@ -214,6 +297,7 @@ class TaxiService:
             except Exception as e:
                 self.console_utils.print(f"Unexpected error in send_heartbeat: {e}", 3)
                 time.sleep(5)
+
 
     def run(self):
         if not validate_grid(self.grid.rows, self.grid.cols, self.console_utils) or not validate_initial_position(self.taxi.pos_x, self.taxi.pos_y, self.taxi.grid.rows, self.taxi.grid.cols, self.taxi.taxi_id, self.console_utils) or not validate_speed(self.taxi.speed, self.taxi.taxi_id, self.console_utils):

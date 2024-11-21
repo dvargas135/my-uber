@@ -4,7 +4,7 @@ import time
 from threading import Thread, Event, Lock
 from src.models.system_model import System
 from src.models.taxi_model import Taxi
-from src.config import PUB_PORT, SUB_PORT, REP_PORT, DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME, BACKUP_ACTIVATION_PORT
+from src.config import PUB_PORT, SUB_PORT, REP_PORT, BACKUP_DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME, BACKUP_ACTIVATION_PORT
 from src.utils.rich_utils import RichConsoleUtils
 from src.utils.validation_utils import validate_grid
 from src.utils.zmq_utils import ZMQUtils
@@ -16,7 +16,7 @@ class BackupDispatcherService:
     def __init__(self, N, M):
         self.console_utils = RichConsoleUtils()
         self.system = System(N, M)
-        self.zmq_utils = ZMQUtils(DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT)
+        self.zmq_utils = ZMQUtils(BACKUP_DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT)
 
         columns = ["Taxi ID", "Position X", "Position Y", "Speed", "Status", "Connected"]
         self.table = self.console_utils.create_table("Taxi Positions", columns)
@@ -26,7 +26,7 @@ class BackupDispatcherService:
         self.heartbeat_timestamps = {}
 
         self.activation_socket = self.zmq_utils.context.socket(zmq.SUB)
-        self.activation_socket.connect(f"tcp://localhost:{BACKUP_ACTIVATION_PORT}")
+        self.activation_socket.connect(f"tcp://{BACKUP_DISPATCHER_IP}:{BACKUP_ACTIVATION_PORT}")
         self.activation_socket.setsockopt_string(zmq.SUBSCRIBE, "activate_backup")
 
         self.user_req_socket = self.zmq_utils.bind_rep_user_request_socket(USER_REQ_PORT)
@@ -398,6 +398,7 @@ class BackupDispatcherService:
             session.close()
     
     def activate(self):
+        self.console_utils.print("Backup dispatcher active... Waiting for heartbeat signal from heartbeat server.")
         while True:
             try:
                 if self.activation_socket.poll(1000):
@@ -414,9 +415,14 @@ class BackupDispatcherService:
             self.console_utils.print(f"Dispatcher failed to start due to invalid parameters.", 3)
             return
         
-        activate_thread = Thread(target=self.activate, name="ActivationHandler")
-        activate_thread.daemon = False
-        activate_thread.start()
+        try:
+            activate_thread = Thread(target=self.activate, name="ActivationHandler")
+            activate_thread.daemon = False
+            activate_thread.start()
+        while not self.stop_event.is_set():
+            activate_thread.join(timeout=1)
+        finally:
+            activate_thread.join()
 
         while self.main_dispatcher_offline:
             try:

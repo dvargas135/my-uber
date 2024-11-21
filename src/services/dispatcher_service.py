@@ -226,7 +226,6 @@ class DispatcherService:
         else:
             self.console_utils.print(f"Taxi {taxi_id} not found during service simulation.", 3)
 
-
     def receive_position_updates(self):
         puller = self.zmq_utils.bind_pull_socket()
         try:

@@ -1,5 +1,3 @@
-# src/services/heartbeat_service.py
-
 import zmq
 import time
 from src.config import (
@@ -12,14 +10,6 @@ from src.utils.rich_utils import RichConsoleUtils
 
 class HeartbeatService:
     def __init__(self, dispatcher_ip, backup_dispatcher_ip, heartbeat_port, backup_activation_port):
-        """
-        Initializes the HeartbeatService.
-
-        :param dispatcher_ip: IP address of the main dispatcher.
-        :param backup_dispatcher_ip: IP address of the backup dispatcher.
-        :param heartbeat_port: Port on which the main dispatcher listens for heartbeats.
-        :param backup_activation_port: Port on which the backup dispatcher listens for activation signals.
-        """
         self.dispatcher_ip = dispatcher_ip
         self.backup_dispatcher_ip = backup_dispatcher_ip
         self.heartbeat_port = heartbeat_port
@@ -27,51 +17,70 @@ class HeartbeatService:
         self.console_utils = RichConsoleUtils()
         self.context = zmq.Context()
         
-        # Initialize heartbeat socket (REQ) to communicate with the main dispatcher
         self.heartbeat_socket = self.context.socket(zmq.REQ)
         self.heartbeat_socket.connect(f"tcp://{self.dispatcher_ip}:{self.heartbeat_port}")
         
-        # Initialize activation socket (PUSH) to send signals to the backup dispatcher
         self.backup_socket = self.context.socket(zmq.PUSH)
         self.backup_socket.connect(f"tcp://{self.backup_dispatcher_ip}:{self.backup_activation_port}")
 
+        self.main_active = True  # Flag to track main dispatcher's status
+
+
     def send_heartbeat(self):
-        """
-        Continuously sends heartbeat messages to the main dispatcher.
-        If the dispatcher does not respond, signals the backup dispatcher to activate.
-        """
         while True:
             try:
                 self.heartbeat_socket.send_string("heartbeat")
                 if self.heartbeat_socket.poll(1000):  # Wait for 1 second for a response
                     response = self.heartbeat_socket.recv_string()
                     if response == "heartbeat_ack":
-                        self.console_utils.print("Heartbeat successful: Dispatcher is active.", level=2)
+                        if not self.main_active:
+                            # Main dispatcher has come back online
+                            self.console_utils.print("Heartbeat successful: Dispatcher is active again.", level=2)
+                            self.signal_backup("deactivate_backup")
+                            self.main_active = True
+                        else:
+                            # Main dispatcher is still active
+                            self.console_utils.print("Heartbeat successful: Dispatcher is active.", level=2)
+                    else:
+                        if self.main_active:
+                            self.console_utils.print(f"Unexpected response from dispatcher: {response}", level=3)
+                            self.signal_backup("activate_backup")
+                            self.main_active = False
                 else:
-                    self.console_utils.print("Heartbeat failed: Dispatcher is inactive.", level=3)
-                    self.signal_backup()
+                    if self.main_active:
+                        self.console_utils.print("Heartbeat failed: Dispatcher is inactive.", level=3)
+                        self.signal_backup("activate_backup")
+                        self.main_active = False
             except zmq.ZMQError as e:
-                self.console_utils.print(f"Heartbeat error: {e}", level=3)
-                self.signal_backup()
+                if self.main_active:
+                    self.console_utils.print(f"Heartbeat error: {e}", level=3)
+                    self.signal_backup("activate_backup")
+                    self.main_active = False
             except Exception as e:
-                self.console_utils.print(f"Unexpected error in heartbeat: {e}", level=3)
-                self.signal_backup()
+                if self.main_active:
+                    self.console_utils.print(f"Unexpected error in heartbeat: {e}", level=3)
+                    self.signal_backup("activate_backup")
+                    self.main_active = False
             time.sleep(5)  # Send heartbeat every 5 seconds
 
-    def signal_backup(self):
+
+    def signal_backup(self, signal_type):
         """
-        Sends an activation signal to the backup dispatcher to take over tasks.
+        Sends an activation or deactivation signal to the backup dispatcher.
+
+        :param signal_type: "activate_backup" to activate, "deactivate_backup" to deactivate.
         """
         try:
-            self.backup_socket.send_string("activate_backup")
-            self.console_utils.print("Signaled backup dispatcher to activate.", level=2)
+            self.backup_socket.send_string(signal_type)
+            if signal_type == "activate_backup":
+                self.console_utils.print("Signaled backup dispatcher to activate.", level=2)
+            elif signal_type == "deactivate_backup":
+                self.console_utils.print("Signaled backup dispatcher to deactivate.", level=2)
         except zmq.ZMQError as e:
             self.console_utils.print(f"Error signaling backup dispatcher: {e}", level=3)
 
+
     def run(self):
-        """
-        Starts the heartbeat monitoring process.
-        """
         self.send_heartbeat()
 
 if __name__ == "__main__":

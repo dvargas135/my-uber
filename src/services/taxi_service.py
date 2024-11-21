@@ -73,6 +73,7 @@ class TaxiService:
                         f"{'Re' if reconnect else ''}Connection attempt failed, retrying... [{retry_count}]",
                         3, end="\r"
                     )
+                    self.connect_to_dispatcher(reconnect=True)
                     time.sleep(2)
 
                 requester.close()

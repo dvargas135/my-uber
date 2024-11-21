@@ -402,6 +402,7 @@ class BackupDispatcherService:
                         self.console_utils.print("Backup Dispatcher activated. Taking over tasks.", 2)
                         # Initialize backup dispatcher tasks here
                         self.main_dispatcher_offline = True
+                        return
             except zmq.ZMQError as e:
                 self.console_utils.print(f"Backup activation error: {e}", 3)
 

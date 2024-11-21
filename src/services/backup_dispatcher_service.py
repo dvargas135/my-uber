@@ -392,7 +392,7 @@ class BackupDispatcherService:
         finally:
             session.close()
     
-        def activate_backup_dispatcher(self):
+    def activate_backup_dispatcher(self):
         """
         Activates the backup dispatcher to take over tasks.
         """
@@ -477,4 +477,3 @@ class BackupDispatcherService:
             self.zmq_utils.close()
             self.db_handler.close()
             self.console_utils.print("Backup Dispatcher process ended and resources cleaned up.", 4)
-            

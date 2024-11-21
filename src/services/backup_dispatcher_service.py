@@ -393,7 +393,7 @@ class BackupDispatcherService:
                 self.system.register_taxi(taxi)
             self.console_utils.print("Dispatcher state initialized from the database.", 2)
         except Exception as e:
-            self.console_utils.print(f"Error initializing dispatcher state: {e}", 3)
+            self.console_utils.print(f"Error initializing dispatcher state: {e}", 3) 
         finally:
             session.close()
     

@@ -76,7 +76,6 @@ class UserThread(Thread):
             self.socket.close()
             self.context.term()
 
-
 class UserService:
     def __init__(self, users_file, dispatcher_ip, backup_dispatcher_ip, user_req_port, backup_user_req_port):
         self.users_file = users_file

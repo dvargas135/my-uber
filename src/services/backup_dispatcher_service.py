@@ -325,121 +325,79 @@ class BackupDispatcherService:
 
         self.live.update(table)
     
-    # def receive_heartbeat(self):
-    #     try:
-    #         heartbeat_puller = self.zmq_utils.bind_pull_heartbeat_socket()
-    #         while not self.stop_event.is_set():
-    #             try:
-    #                 message = heartbeat_puller.recv_string(zmq.NOBLOCK)
-    #                 if message:
-    #                     parts = message.split()
-    #                     if len(parts) != 2 or parts[0] != "heartbeat":
-    #                         self.console_utils.print(f"Invalid heartbeat message: {message}", 3)
-    #                         continue
-    #                     _, taxi_id = parts
-    #                     try:
-    #                         taxi_id = int(taxi_id)
-    #                     except ValueError:
-    #                         self.console_utils.print(f"Invalid taxi_id in heartbeat message: {message}", 3)
-    #                         continue
-                            
-    #                     with self.heartbeat_lock:
-    #                         self.heartbeat_timestamps[taxi_id] = time.time()
-    #                         if self.db_handler.taxi_exists(taxi_id):
-    #                             self.db_handler.update_taxi_connected_status(taxi_id, True)
-    #                             # self.console_utils.print(f"Received heartbeat from Taxi {taxi_id}", show_level=False)
-    #                         else:
-    #                             self.console_utils.print(f"Heartbeat from unknown Taxi {taxi_id}", 3)
-    #                     self.refresh_table()
-    #             except zmq.Again:
-    #                 pass
-    #             except zmq.ZMQError as e:
-    #                 if not self.zmq_utils.context.closed:
-    #                     self.console_utils.print(f"Error while receiving heartbeat: {e}", 3)
-    #             except Exception as e:
-    #                 self.console_utils.print(f"Unexpected error in receive_heartbeat: {e}", 3)
-    #     finally:
-    #         if heartbeat_puller:
-    #             heartbeat_puller.close()
-    
-    # def receive_heartbeat_from_heartbeat_server(self):
-    #     try:
-    #         activation_puller = self.zmq_utils.context.socket(zmq.PULL)
-    #         activation_puller.bind(f"tcp://*:{self.heartbeat_2_port}")
-
-    #         self.console_utils.print(f"Listening for activation signals on port {self.heartbeat_2_port}.", 2)
-
-    #         poller = zmq.Poller()
-    #         poller.register(activation_puller, zmq.POLLIN)  # Poll for incoming messages
-
-    #         while not self.stop_event.is_set():
-    #             socks = dict(poller.poll(1000))  # Wait for 1 second
-    #             if activation_puller in socks:
-    #                 message = activation_puller.recv_string()
-    #                 self.console_utils.print(f"Received signal: {message}", 2)
-
-    #                 if message == "activate_backup":
-    #                     if not self.main_dispatcher_offline:
-    #                         self.main_dispatcher_offline = True
-    #                         self.console_utils.print("Received activate signal. Taking over tasks as Backup Dispatcher.", 2)
-    #                         self.start_dispatcher_tasks()
-
-    #                 elif message == "deactivate_backup":
-    #                     if self.main_dispatcher_offline:
-    #                         self.main_dispatcher_offline = False
-    #                         self.console_utils.print("Received deactivate signal. Pausing Backup Dispatcher tasks.", 2)
-    #                         self.stop_dispatcher_tasks()
-
-    #             else:
-    #                 time.sleep(0.1)  # Keep the loop non-blocking
-
-    #     except zmq.ZMQError as e:
-    #         self.console_utils.print(f"Error receiving heartbeat signal: {e}", 3)
-
-    #     finally:
-    #         activation_puller.close()
-
-    def receive_heartbeat_signals(self):
-        """
-        Unified method to handle both activation and deactivation signals
-        from the Heartbeat Service.
-        """
+    def receive_heartbeat(self):
         try:
-            # Create and bind a PULL socket for activation and deactivation signals
-            signal_puller = self.zmq_utils.context.socket(zmq.PULL)
-            signal_puller.bind(f"tcp://*:{self.heartbeat_2_port}")
-
-            self.console_utils.print(f"Listening for signals on port {self.heartbeat_2_port}.", 2)
-
+            heartbeat_puller = self.zmq_utils.bind_pull_heartbeat_socket()
             while not self.stop_event.is_set():
                 try:
-                    # Poll for messages
-                    message = signal_puller.recv_string(flags=zmq.NOBLOCK)
+                    message = heartbeat_puller.recv_string(zmq.NOBLOCK)
+                    if message:
+                        parts = message.split()
+                        if len(parts) != 2 or parts[0] != "heartbeat":
+                            self.console_utils.print(f"Invalid heartbeat message: {message}", 3)
+                            continue
+                        _, taxi_id = parts
+                        try:
+                            taxi_id = int(taxi_id)
+                        except ValueError:
+                            self.console_utils.print(f"Invalid taxi_id in heartbeat message: {message}", 3)
+                            continue
+                            
+                        with self.heartbeat_lock:
+                            self.heartbeat_timestamps[taxi_id] = time.time()
+                            if self.db_handler.taxi_exists(taxi_id):
+                                self.db_handler.update_taxi_connected_status(taxi_id, True)
+                                # self.console_utils.print(f"Received heartbeat from Taxi {taxi_id}", show_level=False)
+                            else:
+                                self.console_utils.print(f"Heartbeat from unknown Taxi {taxi_id}", 3)
+                        self.refresh_table()
+                except zmq.Again:
+                    pass
+                except zmq.ZMQError as e:
+                    if not self.zmq_utils.context.closed:
+                        self.console_utils.print(f"Error while receiving heartbeat: {e}", 3)
+                except Exception as e:
+                    self.console_utils.print(f"Unexpected error in receive_heartbeat: {e}", 3)
+        finally:
+            if heartbeat_puller:
+                heartbeat_puller.close()
+    
+    def receive_heartbeat_from_heartbeat_server(self):
+        try:
+            activation_puller = self.zmq_utils.context.socket(zmq.PULL)
+            activation_puller.bind(f"tcp://*:{self.heartbeat_2_port}")
+
+            self.console_utils.print(f"Listening for activation signals on port {self.heartbeat_2_port}.", 2)
+
+            poller = zmq.Poller()
+            poller.register(activation_puller, zmq.POLLIN)  # Poll for incoming messages
+
+            while not self.stop_event.is_set():
+                socks = dict(poller.poll(1000))  # Wait for 1 second
+                if activation_puller in socks:
+                    message = activation_puller.recv_string()
                     self.console_utils.print(f"Received signal: {message}", 2)
 
                     if message == "activate_backup":
                         if not self.main_dispatcher_offline:
-                            self.console_utils.print("Activate signal received. Taking over as Backup Dispatcher.", 2)
                             self.main_dispatcher_offline = True
+                            self.console_utils.print("Received activate signal. Taking over tasks as Backup Dispatcher.", 2)
                             self.start_dispatcher_tasks()
 
                     elif message == "deactivate_backup":
                         if self.main_dispatcher_offline:
-                            self.console_utils.print("Deactivate signal received. Pausing Backup Dispatcher.", 2)
                             self.main_dispatcher_offline = False
+                            self.console_utils.print("Received deactivate signal. Pausing Backup Dispatcher tasks.", 2)
                             self.stop_dispatcher_tasks()
 
-                except zmq.Again:
-                    time.sleep(0.1)  # Allow non-blocking polling
-                except zmq.ZMQError as e:
-                    self.console_utils.print(f"Error while receiving signal: {e}", 3)
-                    time.sleep(0.5)  # Prevent spinning in case of error
+                else:
+                    time.sleep(0.1)  # Keep the loop non-blocking
 
-        except Exception as e:
-            self.console_utils.print(f"Critical error in signal handling: {e}", 3)
+        except zmq.ZMQError as e:
+            self.console_utils.print(f"Error receiving heartbeat signal: {e}", 3)
 
         finally:
-            signal_puller.close()
+            activation_puller.close()
 
 
     def monitor_heartbeats(self):
@@ -478,61 +436,56 @@ class BackupDispatcherService:
         if not validate_grid(self.system.grid.rows, self.system.grid.cols, self.console_utils):
             self.console_utils.print(f"Dispatcher failed to start due to invalid parameters.", 3)
             return
-
         try:
-            # Thread to listen for activation/deactivation signals
-            signal_thread = Thread(target=self.receive_heartbeat_signals, name="SignalHandler")
-            signal_thread.daemon = False
-            signal_thread.start()
+            activate_thread = Thread(target=self.activate, name="ActivationHandler")
+            activate_thread.daemon = False
+            activate_thread.start()
+        finally:
+            activate_thread.join()
 
-            # Main loop for dispatcher tasks
-            while self.main_dispatcher_offline:
-                try:
-                    with self.console_utils.start_live_display(self.table) as live:
-                        self.live = live
+        while self.main_dispatcher_offline:
+            try:
+                with self.console_utils.start_live_display(self.table) as live:
+                    self.live = live
 
-                        # Start all required threads for dispatcher tasks
-                        taxi_thread = Thread(target=self.handle_taxi_requests, name="ConnectionHandler")
-                        updates_thread = Thread(target=self.receive_position_updates, name="PositionUpdater")
-                        heartbeat_thread = Thread(target=self.receive_heartbeat, name="HeartbeatReceiver")
-                        monitor_thread = Thread(target=self.monitor_heartbeats, name="HeartbeatMonitor")
-                        user_thread = Thread(target=self.handle_user_requests, name="UserRequestHandler")
+                    taxi_thread = Thread(target=self.handle_taxi_requests, name="ConnectionHandler")
+                    updates_thread = Thread(target=self.receive_position_updates, name="PositionUpdater")
+                    heartbeat_thread = Thread(target=self.receive_heartbeat, name="HeartbeatReceiver")
+                    monitor_thread = Thread(target=self.monitor_heartbeats, name="HeartbeatMonitor")
+                    user_thread = Thread(target=self.handle_user_requests, name="UserRequestHandler")
 
-                        taxi_thread.daemon = False
-                        updates_thread.daemon = False
-                        heartbeat_thread.daemon = False
-                        monitor_thread.daemon = False
-                        user_thread.daemon = False
+                    taxi_thread.daemon = False
+                    updates_thread.daemon = False
+                    heartbeat_thread.daemon = False
+                    monitor_thread.daemon = False
+                    user_thread.daemon = False
 
-                        taxi_thread.start()
-                        updates_thread.start()
-                        heartbeat_thread.start()
-                        monitor_thread.start()
-                        user_thread.start()
+                    taxi_thread.start()
+                    updates_thread.start()
+                    heartbeat_thread.start()
+                    monitor_thread.start()
+                    user_thread.start()
 
-                        while not self.stop_event.is_set():
-                            taxi_thread.join(timeout=1)
-                            updates_thread.join(timeout=1)
-                            heartbeat_thread.join(timeout=1)
-                            monitor_thread.join(timeout=1)
-                            user_thread.join(timeout=1)
-                            signal_thread.join(timeout=1)
+                    while not self.stop_event.is_set():
+                        taxi_thread.join(timeout=1)
+                        updates_thread.join(timeout=1)
+                        heartbeat_thread.join(timeout=1)
+                        monitor_thread.join(timeout=1)
+                        user_thread.join(timeout=1)
+                        activate_thread.join(timeout=1)
 
-                except KeyboardInterrupt:
-                    self.console_utils.print("Backup Dispatcher process interrupted by user.", 2)
-                    self.stop_event.set()
+            except KeyboardInterrupt:
+                self.console_utils.print("Backup Dispatcher process interrupted by user.", 2)
+                self.stop_event.set()
 
-                finally:
-                    self.console_utils.print("Cleaning up backup dispatcher resources...", 2)
-                    taxi_thread.join()
-                    updates_thread.join()
-                    heartbeat_thread.join()
-                    monitor_thread.join()
-                    user_thread.join()
-                    signal_thread.join()
-                    self.zmq_utils.close()
-                    self.db_handler.close()
-                    self.console_utils.print("Backup Dispatcher process ended and resources cleaned up.", 4)
-
-        except Exception as e:
-            self.console_utils.print(f"Critical error in Backup Dispatcher: {e}", 3)
+            finally:
+                self.console_utils.print("Cleaning up backup dispatcher resources...", 2)
+                taxi_thread.join()
+                updates_thread.join()
+                heartbeat_thread.join()
+                monitor_thread.join()
+                user_thread.join()
+                activate_thread.join()
+                self.zmq_utils.close()
+                self.db_handler.close()
+                self.console_utils.print("Backup Dispatcher process ended and resources cleaned up.", 4)

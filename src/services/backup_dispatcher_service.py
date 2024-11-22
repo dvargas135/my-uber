@@ -453,18 +453,21 @@ class BackupDispatcherService:
                     heartbeat_thread = Thread(target=self.receive_heartbeat, name="HeartbeatReceiver")
                     monitor_thread = Thread(target=self.monitor_heartbeats, name="HeartbeatMonitor")
                     user_thread = Thread(target=self.handle_user_requests, name="UserRequestHandler")
+                    receive_heartbeat_from_heartbeat_server_thread = Thread(target=self.receive_heartbeat_from_heartbeat_server, name="HeartbeatServerReceiver")
 
                     taxi_thread.daemon = False
                     updates_thread.daemon = False
                     heartbeat_thread.daemon = False
                     monitor_thread.daemon = False
                     user_thread.daemon = False
+                    receive_heartbeat_from_heartbeat_server_thread.daemon = False
 
                     taxi_thread.start()
                     updates_thread.start()
                     heartbeat_thread.start()
                     monitor_thread.start()
                     user_thread.start()
+                    receive_heartbeat_from_heartbeat_server_thread.start()
 
                     while not self.stop_event.is_set():
                         taxi_thread.join(timeout=1)
@@ -473,6 +476,7 @@ class BackupDispatcherService:
                         monitor_thread.join(timeout=1)
                         user_thread.join(timeout=1)
                         activate_thread.join(timeout=1)
+                        receive_heartbeat_from_heartbeat_server_thread.join(timeout=1)
 
             except KeyboardInterrupt:
                 self.console_utils.print("Backup Dispatcher process interrupted by user.", 2)
@@ -486,6 +490,7 @@ class BackupDispatcherService:
                 monitor_thread.join()
                 user_thread.join()
                 activate_thread.join()
+                receive_heartbeat_from_heartbeat_server_thread.join()
                 self.zmq_utils.close()
                 self.db_handler.close()
                 self.console_utils.print("Backup Dispatcher process ended and resources cleaned up.", 4)

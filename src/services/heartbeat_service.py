@@ -4,7 +4,8 @@ from src.config import (
     DISPATCHER_IP,
     BACKUP_DISPATCHER_IP,
     HEARTBEAT_3_PORT,
-    BACKUP_ACTIVATION_PORT
+    BACKUP_ACTIVATION_PORT,
+    HEARTBEAT_2_PORT
 )
 from src.utils.rich_utils import RichConsoleUtils
 
@@ -16,6 +17,7 @@ class HeartbeatService:
         self.backup_activation_port = backup_activation_port
         self.console_utils = RichConsoleUtils()
         self.context = zmq.Context()
+        self.heartbeat_2_port = HEARTBEAT_2_PORT
         
         self.heartbeat_socket = self.context.socket(zmq.REQ)
         self.heartbeat_socket.connect(f"tcp://{self.dispatcher_ip}:{self.heartbeat_port}")
@@ -87,6 +89,6 @@ if __name__ == "__main__":
         dispatcher_ip=DISPATCHER_IP,
         backup_dispatcher_ip=BACKUP_DISPATCHER_IP,
         heartbeat_port=HEARTBEAT_3_PORT,
-        backup_activation_port=BACKUP_ACTIVATION_PORT
+        backup_activation_port=HEARTBEAT_2_PORT
     )
     heartbeat_service.run()

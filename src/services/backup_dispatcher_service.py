@@ -389,11 +389,11 @@ class BackupDispatcherService:
                         if self.main_dispatcher_offline:
                             self.main_dispatcher_offline = False
                             self.console_utils.print("Received deactivate signal. Pausing Backup Dispatcher tasks.", 2)
-                            self.live.stop()
+                            # self.live.stop()
                             # self.stop_dispatcher_tasks()
 
                 else:
-                    time.sleep(0.1)  # Keep the loop non-blocking
+                    time.sleep(0.1)
 
         except zmq.ZMQError as e:
             self.console_utils.print(f"Error receiving heartbeat signal: {e}", 3)

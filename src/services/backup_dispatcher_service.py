@@ -389,7 +389,8 @@ class BackupDispatcherService:
                         if self.main_dispatcher_offline:
                             self.main_dispatcher_offline = False
                             self.console_utils.print("Received deactivate signal. Pausing Backup Dispatcher tasks.", 2)
-                            self.stop_dispatcher_tasks()
+                            self.live.stop()
+                            # self.stop_dispatcher_tasks()
 
                 else:
                     time.sleep(0.1)  # Keep the loop non-blocking

@@ -89,6 +89,6 @@ if __name__ == "__main__":
         dispatcher_ip=DISPATCHER_IP,
         backup_dispatcher_ip=BACKUP_DISPATCHER_IP,
         heartbeat_port=HEARTBEAT_3_PORT,
-        backup_activation_port=HEARTBEAT_2_PORT
+        backup_activation_port=BACKUP_ACTIVATION_PORT
     )
     heartbeat_service.run()

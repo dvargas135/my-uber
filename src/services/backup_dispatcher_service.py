@@ -16,7 +16,7 @@ class BackupDispatcherService:
     def __init__(self, N, M):
         self.console_utils = RichConsoleUtils()
         self.system = System(N, M)  # Ensure System class is defined
-        self.zmq_utils = ZMQUtils(BACKUP_DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT, HEARTBEAT_2_PORT)
+        self.zmq_utils = ZMQUtils(BACKUP_DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT, BACKUP_ACTIVATION_PORT)
 
         columns = ["Taxi ID", "Position X", "Position Y", "Speed", "Status", "Connected"]
         self.table = self.console_utils.create_table("Taxi Positions", columns)
@@ -366,9 +366,9 @@ class BackupDispatcherService:
     def receive_heartbeat_from_heartbeat_server(self):
         try:
             activation_puller = self.zmq_utils.context.socket(zmq.PULL)
-            activation_puller.bind(f"tcp://*:{self.heartbeat_2_port}")
+            activation_puller.bind(f"tcp://*:{self.backup_activation_port}")
 
-            self.console_utils.print(f"Listening for activation signals on port {self.heartbeat_2_port}.", 2)
+            self.console_utils.print(f"Listening for activation signals on port {self.backup_activation_port}.", 2)
 
             poller = zmq.Poller()
             poller.register(activation_puller, zmq.POLLIN)  # Poll for incoming messages

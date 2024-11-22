@@ -362,36 +362,40 @@ class BackupDispatcherService:
                 heartbeat_puller.close()
     
     def receive_heartbeat_from_heartbeat_server(self):
-        """
-        Listens for activation and deactivation signals from the Heartbeat Service.
-        """
         try:
+            # Ensure the PULL socket is bound to the correct port
             activation_puller = self.zmq_utils.context.socket(zmq.PULL)
-            activation_puller.bind(f"tcp://*:{self.heartbeat_2_port}")  # Ensure this port matches your configuration
+            activation_puller.bind(f"tcp://*:{self.heartbeat_2_port}")
 
             self.console_utils.print(f"Listening for activation signals on port {self.heartbeat_2_port}.", 2)
 
             while not self.stop_event.is_set():
                 try:
-                    message = activation_puller.recv_string(zmq.NOBLOCK)
-                    if message == "activate_backup":
-                        if not self.main_dispatcher_offline:
-                            self.main_dispatcher_offline = True
-                            self.console_utils.print("Received activate signal. Taking over tasks as Backup Dispatcher.", 2)
-                            # Start tasks
-                            self.start_dispatcher_tasks()
-                    elif message == "deactivate_backup":
-                        if self.main_dispatcher_offline:
-                            self.main_dispatcher_offline = False
-                            self.console_utils.print("Received deactivate signal. Pausing Backup Dispatcher tasks.", 2)
-                            # Stop tasks
-                            self.stop_dispatcher_tasks()
+                    # Poll for messages to ensure non-blocking behavior
+                    poller = zmq.Poller()
+                    poller.register(activation_puller, zmq.POLLIN)
+                    socks = dict(poller.poll(1000))  # Poll with a timeout of 1 second
+
+                    if activation_puller in socks and socks[activation_puller] == zmq.POLLIN:
+                        message = activation_puller.recv_string()
+                        if message == "activate_backup":
+                            if not self.main_dispatcher_offline:
+                                self.main_dispatcher_offline = True
+                                self.console_utils.print("Received activate signal. Taking over tasks as Backup Dispatcher.", 2)
+                                self.start_dispatcher_tasks()  # Start tasks
+                        elif message == "deactivate_backup":
+                            if self.main_dispatcher_offline:
+                                self.main_dispatcher_offline = False
+                                self.console_utils.print("Received deactivate signal. Pausing Backup Dispatcher tasks.", 2)
+                                self.stop_dispatcher_tasks()  # Stop tasks
                 except zmq.Again:
-                    time.sleep(0.1)  # Non-blocking loop
+                    # Non-blocking, continue looping
+                    time.sleep(0.1)
                 except zmq.ZMQError as e:
-                    self.console_utils.print(f"Error receiving heartbeat signal: {e}", 3)
+                    self.console_utils.print(f"Error receiving activation signal: {e}", 3)
         finally:
             activation_puller.close()
+
 
 
     def monitor_heartbeats(self):

@@ -394,7 +394,6 @@ class BackupDispatcherService:
         finally:
             activation_puller.close()
 
-
     def monitor_heartbeats(self):
         HEARTBEAT_INTERVAL = 5
         TIMEOUT = 15

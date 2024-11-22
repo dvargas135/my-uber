@@ -105,6 +105,7 @@ class TaxiService:
 
         if reconnect:
             self.console_utils.print("Dispatcher inactive, attempting to reconnect...")
+            self.connected = False
         else:
             self.console_utils.print("Connecting to Dispatcher...")
         
@@ -184,7 +185,7 @@ class TaxiService:
     
     def publish_position(self):
         try:
-            time.sleep(30)
+            time.sleep(5)
             while not self.stop_event.is_set() and not self.taxi.stopped:
                 # if not self.dispatcher_active():
                 #     print("send_heartbeat not self.publish_position()")
@@ -238,7 +239,7 @@ class TaxiService:
                     else:
                         self.console_utils.print(f"Taxi {self.taxi.taxi_id} did not move this interval.", level=2)
 
-                    time.sleep(30)
+                    time.sleep(5)
                 except zmq.ZMQError as e:
                     self.console_utils.print(f"Error publishing position: {e}", level=3)
                     self.console_utils.print("Attempting to reconnect to dispatcher...", level=1)
@@ -268,6 +269,8 @@ class TaxiService:
             self.console_utils.print(f"Error receiving message: {e}", 3, end="\r")
 
     def subscribe_to_assignments(self):
+        if hasattr(self, "subscriber") and self.subscriber:  # Check if the subscriber already exists
+            self.subscriber.close()
         subscriber = self.zmq_utils.context.socket(zmq.SUB)
         subscriber.connect(f"tcp://{self.dispatcher_ip}:{self.pub_port}")
         subscriber.setsockopt_string(zmq.SUBSCRIBE, f"assign {self.taxi.taxi_id}")

@@ -7,19 +7,35 @@ from src.config import DISPATCHER_IP, USER_REQ_PORT
 from src.utils.rich_utils import RichConsoleUtils
 
 class UserThread(Thread):
-    def __init__(self, user_id, pos_x, pos_y, waiting_time, dispatcher_ip, user_req_port, console_utils, stop_event):
+    def __init__(self, user_id, pos_x, pos_y, waiting_time, dispatcher_ip, backup_dispatcher_ip, user_req_port, backup_user_req_port, console_utils, stop_event):
         super().__init__()
         self.user_id = user_id
         self.pos_x = pos_x
         self.pos_y = pos_y
         self.waiting_time = waiting_time
         self.dispatcher_ip = dispatcher_ip
+        self.backup_dispatcher_ip = backup_dispatcher_ip
         self.user_req_port = user_req_port
+        self.backup_user_req_port = backup_user_req_port
         self.console_utils = console_utils
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REQ)
-        self.socket.connect(f"tcp://{self.dispatcher_ip}:{self.user_req_port}")
         self.stop_event = stop_event
+        self.use_backup = False  # Track if using backup dispatcher
+        self.connect_to_dispatcher()
+
+    def connect_to_dispatcher(self):
+        self.socket.close()  # Close any existing socket
+        self.socket = self.context.socket(zmq.REQ)
+        dispatcher_ip = self.backup_dispatcher_ip if self.use_backup else self.dispatcher_ip
+        user_req_port = self.backup_user_req_port if self.use_backup else self.user_req_port
+        self.socket.connect(f"tcp://{dispatcher_ip}:{user_req_port}")
+        self.console_utils.print(f"User {self.user_id} connected to {'backup' if self.use_backup else 'main'} dispatcher.", 2)
+
+    def switch_to_backup(self):
+        self.use_backup = True
+        self.console_utils.print(f"User {self.user_id} switching to backup dispatcher.", 3)
+        self.connect_to_dispatcher()
 
     def run(self):
         try:
@@ -50,18 +66,23 @@ class UserThread(Thread):
                 else:
                     self.console_utils.print(f"User {self.user_id} received unexpected reply: {reply}", 3)
             else:
-                self.console_utils.print(f"User {self.user_id} request timed out after 5 seconds.", 3)
+                self.console_utils.print(f"User {self.user_id} request timed out after 5 seconds. Switching to backup dispatcher.", 3)
+                self.switch_to_backup()
+                self.run()  # Retry with backup dispatcher
         except Exception as e:
             self.console_utils.print(f"Error in User {self.user_id}: {e}", 3)
         finally:
             self.socket.close()
             self.context.term()
 
+
 class UserService:
-    def __init__(self, users_file, dispatcher_ip, user_req_port):
+    def __init__(self, users_file, dispatcher_ip, backup_dispatcher_ip, user_req_port, backup_user_req_port):
         self.users_file = users_file
         self.dispatcher_ip = dispatcher_ip
+        self.backup_dispatcher_ip = backup_dispatcher_ip
         self.user_req_port = user_req_port
+        self.backup_user_req_port = backup_user_req_port
         self.console_utils = RichConsoleUtils()
         self.stop_event = Event()
 
@@ -94,7 +115,9 @@ class UserService:
                     pos_y=user[2],
                     waiting_time=user[3],
                     dispatcher_ip=self.dispatcher_ip,
+                    backup_dispatcher_ip=self.backup_dispatcher_ip,
                     user_req_port=self.user_req_port,
+                    backup_user_req_port=self.backup_user_req_port,
                     console_utils=self.console_utils,
                     stop_event=self.stop_event
                 )

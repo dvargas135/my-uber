@@ -4,7 +4,7 @@ import time
 from threading import Thread, Event, Lock
 from src.models.system_model import System
 from src.models.taxi_model import Taxi
-from src.config import PUB_PORT, SUB_PORT, REP_PORT, BACKUP_DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME, BACKUP_ACTIVATION_PORT
+from src.config import PUB_PORT, SUB_PORT, REP_PORT, BACKUP_DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, BACKUP_USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME, BACKUP_ACTIVATION_PORT, HEARTBEAT_2_PORT
 from src.utils.rich_utils import RichConsoleUtils
 from src.utils.validation_utils import validate_grid
 from src.utils.zmq_utils import ZMQUtils
@@ -16,7 +16,7 @@ class BackupDispatcherService:
     def __init__(self, N, M):
         self.console_utils = RichConsoleUtils()
         self.system = System(N, M)  # Ensure System class is defined
-        self.zmq_utils = ZMQUtils(BACKUP_DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT)
+        self.zmq_utils = ZMQUtils(BACKUP_DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT, HEARTBEAT_2_PORT)
 
         columns = ["Taxi ID", "Position X", "Position Y", "Speed", "Status", "Connected"]
         self.table = self.console_utils.create_table("Taxi Positions", columns)
@@ -29,7 +29,7 @@ class BackupDispatcherService:
         self.activation_socket = self.zmq_utils.context.socket(zmq.PULL)
         self.activation_socket.bind(f"tcp://*:{BACKUP_ACTIVATION_PORT}")
 
-        self.user_req_socket = self.zmq_utils.bind_rep_user_request_socket(USER_REQ_PORT)
+        self.user_req_socket = self.zmq_utils.bind_rep_user_request_socket(BACKUP_USER_REQ_PORT)
 
         self.assignment_lock = Lock()
 
@@ -360,6 +360,22 @@ class BackupDispatcherService:
         finally:
             if heartbeat_puller:
                 heartbeat_puller.close()
+    
+    def receive_heartbeat_from_heartbeat_server(self):
+        try:
+            heartbeat_2_puller = self.zmq_utils.bind_pull_heartbeat_2_socket()
+            while not self.stop_event.is_set():
+                try:
+                    message = heartbeat_2_puller.recv_string(zmq.NOBLOCK)
+                    message = self.activation_socket.recv_string()
+                    if message == "deactivate_backup":
+                        self.main_dispatcher_offline = True
+                        self.console_utils.print(f"Main Dispatcher back online. Pausing Backup Dispatcher.", 3)
+                        return
+                except zmq.ZMQError as e:
+                    self.console_utils.print(f"Backup deactivation error: {e}", 3)
+        except zmq.ZMQError as e:
+                    self.console_utils.print(f"Backup deactivation error: {e}", 3)
 
     def monitor_heartbeats(self):
         HEARTBEAT_INTERVAL = 5

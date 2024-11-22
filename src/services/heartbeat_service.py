@@ -29,7 +29,7 @@ class HeartbeatService:
     def send_heartbeat(self):
         while True:
             try:
-                self.heartbeat_socket.send_string("heartbeat")
+                self.heartbeat_socket.send_string("heartbeat_srv")
                 if self.heartbeat_socket.poll(1000):  # Wait for 1 second for a response
                     response = self.heartbeat_socket.recv_string()
                     if response == "heartbeat_ack":

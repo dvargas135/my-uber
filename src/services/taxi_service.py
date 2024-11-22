@@ -3,7 +3,7 @@ import time
 import os
 import random
 from threading import Event, Thread, Lock, Condition
-from src.config import DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT, BACKUP_DISPATCHER_IP
+from src.config import DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT, BACKUP_DISPATCHER_IP, HEARTBEAT_2_PORT
 from src.models.taxi_model import Taxi
 from src.utils.rich_utils import RichConsoleUtils
 from src.models.grid_model import Grid
@@ -17,7 +17,7 @@ class TaxiService:
         self.taxi = Taxi(taxi_id, self.grid.rows, self.grid.cols, pos_x, pos_y, speed, status)
 
         self.console_utils = RichConsoleUtils()
-        self.zmq_utils = ZMQUtils(DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT)
+        self.zmq_utils = ZMQUtils(DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT, HEARTBEAT_2_PORT)
         self.stop_event = Event()
         self.msg = f"{self.taxi.taxi_id} {self.taxi.pos_x} {self.taxi.pos_y} {self.taxi.speed} {self.taxi.status}"
 

@@ -82,16 +82,16 @@ class DatabaseHandler:
     def mark_taxi_available(self, taxi_id):
         self.set_taxi_status(taxi_id, "available")
     
-    def add_user_request(self, user_id, user_x, user_y, waiting_time=30):
+    def add_user_request(self, user_id, pos_x, pos_y, waiting_time=30):
         # self.connect()
         cursor = self.get_cursor()
         connection = self.get_connection()
         query = """
-        INSERT INTO users (user_id, user_x, user_y, waiting_time) 
+        INSERT INTO users (user_id, pos_x, pos_y, waiting_time) 
         VALUES (%s, %s, %s, %s) 
-        ON DUPLICATE KEY UPDATE user_x = VALUES(user_x), user_y = VALUES(user_y), waiting_time = VALUES(waiting_time)
+        ON DUPLICATE KEY UPDATE pos_x = VALUES(pos_x), pos_y = VALUES(pos_y), waiting_time = VALUES(waiting_time)
         """
-        values = (user_id, user_x, user_y, waiting_time)
+        values = (user_id, pos_x, pos_y, waiting_time)
         cursor.execute(query, values)
         connection.commit()
         self.close()

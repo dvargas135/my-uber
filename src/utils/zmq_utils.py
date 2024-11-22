@@ -2,7 +2,7 @@ import zmq
 import threading
 
 class ZMQUtils:
-    def __init__(self, dispatcher_ip, pub_port, sub_port, rep_port, pull_port, heartbeat_port):
+    def __init__(self, dispatcher_ip, pub_port, sub_port, rep_port, pull_port, heartbeat_port, heartbeat_2_port):
         self.context = zmq.Context()
         self.dispatcher_ip = dispatcher_ip
         self.pub_port = pub_port
@@ -10,6 +10,7 @@ class ZMQUtils:
         self.rep_port = rep_port
         self.pull_port = pull_port
         self.heartbeat_port = heartbeat_port
+        self.heartbeat_2_port = heartbeat_2_port
         self.publisher = None
         self.subscriber = None
         self.requester = None
@@ -17,7 +18,9 @@ class ZMQUtils:
         self.puller = None
         self.pusher = None
         self.heartbeat_puller = None
+        self.heartbeat_2_puller = None
         self.heartbeat_pusher = None
+        self.heartbeat_2_pusher = None
         self.socket_ready = threading.Condition()
         self.socket_initialized = False
 
@@ -60,6 +63,16 @@ class ZMQUtils:
     def connect_push_heartbeat(self):
         self.heartbeat_pusher = self.context.socket(zmq.PUSH)
         self.heartbeat_pusher.connect(f"tcp://{self.dispatcher_ip}:{self.heartbeat_port}")
+        return self.heartbeat_pusher
+
+    def bind_pull_heartbeat_2_socket(self):
+        self.heartbeat_puller = self.context.socket(zmq.PULL)
+        self.heartbeat_puller.bind(f"tcp://*:{self.heartbeat_2_port}")
+        return self.heartbeat_puller
+
+    def connect_push_heartbeat_2(self):
+        self.heartbeat_pusher = self.context.socket(zmq.PUSH)
+        self.heartbeat_pusher.connect(f"tcp://{self.dispatcher_ip}:{self.heartbeat_2_port}")
         return self.heartbeat_pusher
     
     def bind_rep_user_request_socket(self, port):
@@ -105,6 +118,8 @@ class ZMQUtils:
         self.pusher = None
         self.heartbeat_puller = None
         self.heartbeat_pusher = None
+        self.heartbeat_2_puller = None
+        self.heartbeat_2_pusher = None
 
         # Recreate sockets
         self.connect_push()
@@ -116,10 +131,6 @@ class ZMQUtils:
         with self.socket_ready:
             self.socket_initialized = True
             self.socket_ready.notify_all()
-
-        print("All sockets have been recreated.")
-
-
 
     def close(self):
         if self.publisher:
@@ -138,4 +149,8 @@ class ZMQUtils:
             self.heartbeat_puller.close()
         if self.heartbeat_pusher:
             self.heartbeat_pusher.close()
+        if self.heartbeat_2_puller:
+            self.heartbeat_2_puller.close()
+        if self.heartbeat_2_pusher:
+            self.heartbeat_2_pusher.close()
         self.context.term()

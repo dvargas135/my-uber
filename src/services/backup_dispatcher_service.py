@@ -363,16 +363,18 @@ class BackupDispatcherService:
     
     def receive_heartbeat_from_heartbeat_server(self):
         try:
-            # Initialize the socket for receiving signals
             activation_puller = self.zmq_utils.context.socket(zmq.PULL)
-            activation_puller.bind(f"tcp://*:{self.heartbeat_2_port}")  # Ensure this port matches your configuration
+            activation_puller.bind(f"tcp://*:{self.heartbeat_2_port}")
 
             self.console_utils.print(f"Listening for activation signals on port {self.heartbeat_2_port}.", 2)
 
+            poller = zmq.Poller()
+            poller.register(activation_puller, zmq.POLLIN)  # Poll for incoming messages
+
             while not self.stop_event.is_set():
-                try:
-                    # Receive activation or deactivation signal
-                    message = activation_puller.recv_string(zmq.NOBLOCK)
+                socks = dict(poller.poll(1000))  # Wait for 1 second
+                if activation_puller in socks:
+                    message = activation_puller.recv_string()
                     self.console_utils.print(f"Received signal: {message}", 2)
 
                     if message == "activate_backup":
@@ -387,20 +389,14 @@ class BackupDispatcherService:
                             self.console_utils.print("Received deactivate signal. Pausing Backup Dispatcher tasks.", 2)
                             self.stop_dispatcher_tasks()
 
-                except zmq.Again:
-                    # No message available, keep loop non-blocking
-                    time.sleep(0.1)
-                except zmq.ZMQError as e:
-                    self.console_utils.print(f"Error receiving heartbeat signal: {e}", 3)
-                    time.sleep(0.5)  # Slight delay to avoid spamming in case of errors
+                else:
+                    time.sleep(0.1)  # Keep the loop non-blocking
 
-        except Exception as e:
-            self.console_utils.print(f"Critical error in heartbeat signal handling: {e}", 3)
+        except zmq.ZMQError as e:
+            self.console_utils.print(f"Error receiving heartbeat signal: {e}", 3)
 
         finally:
             activation_puller.close()
-
-
 
 
     def monitor_heartbeats(self):

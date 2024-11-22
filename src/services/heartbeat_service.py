@@ -81,7 +81,7 @@ class HeartbeatService:
             self.backup_socket.send_string(signal_type)
             if signal_type == "activate_backup":
                 self.console_utils.print("Signaled backup dispatcher to activate.", level=2)
-                print(f"{self.main_active}")
+                # print(f"{self.main_active}")
             elif signal_type == "deactivate_backup":
                 self.console_utils.print("Signaled backup dispatcher to deactivate.", level=2)
         except zmq.ZMQError as e:

@@ -36,6 +36,7 @@ class BackupDispatcherService:
         self.db_handler = DatabaseHandler(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME)
 
         self.main_dispatcher_offline = False
+        self.heartbeat_2_port = HEARTBEAT_2_PORT
 
     def handle_taxi_requests(self):
         responder = self.zmq_utils.bind_rep_socket()

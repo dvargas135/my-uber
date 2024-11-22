@@ -21,6 +21,7 @@ class ZMQUtils:
         self.heartbeat_2_puller = None
         self.heartbeat_pusher = None
         self.heartbeat_2_pusher = None
+        self.heartbeat_responder = None
         self.socket_ready = threading.Condition()
         self.socket_initialized = False
 
@@ -79,6 +80,11 @@ class ZMQUtils:
         socket = self.context.socket(zmq.REP)
         socket.bind(f"tcp://*:{port}")
         return socket
+    
+    def bind_rep_heartbeat_socket(self):
+        self.heartbeat_responder = self.context.socket(zmq.REP)
+        self.heartbeat_responder.bind(f"tcp://*:{self.heartbeat_3_port}")
+        return self.heartbeat_responder
     
     def publish_assignment(self, message):
         pub_socket = self.context.socket(zmq.PUB)

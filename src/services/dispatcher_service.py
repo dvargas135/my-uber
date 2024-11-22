@@ -4,7 +4,7 @@ import time
 from threading import Thread, Event, Lock
 from src.models.system_model import System
 from src.models.taxi_model import Taxi
-from src.config import PUB_PORT, SUB_PORT, REP_PORT, DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME, HEARTBEAT_2_PORT
+from src.config import PUB_PORT, SUB_PORT, REP_PORT, DISPATCHER_IP, PULL_PORT, HEARTBEAT_PORT, USER_REQ_PORT, DB_USER, DB_PASSWORD, DB_HOST, DB_NAME, HEARTBEAT_2_PORT, HEARTBEAT_3_PORT
 from src.utils.rich_utils import RichConsoleUtils
 from src.utils.validation_utils import validate_grid
 from src.utils.zmq_utils import ZMQUtils
@@ -35,6 +35,7 @@ class DispatcherService:
         self.db_handler = DatabaseHandler(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME)
 
         # self.initialize_dispatcher_state()
+        self.heartbeat_3_port = HEARTBEAT_3_PORT
 
     def handle_taxi_requests(self):
         responder = self.zmq_utils.bind_rep_socket()
@@ -323,21 +324,33 @@ class DispatcherService:
         self.live.update(table)
 
     def handle_heartbeats(self):
+        import zmq
+
         try:
-            heartbeat_puller = self.zmq_utils.bind_pull_heartbeat_2_socket()
+            context = zmq.Context()
+            heartbeat_responder = context.socket(zmq.REP)
+            heartbeat_responder.bind(f"tcp://*:{self.heartbeat_3_port}")
+
+            self.console_utils.print(f"Listening for heartbeats on port {self.heartbeat_3_port}.", 2)
+
             while not self.stop_event.is_set():
                 try:
-                    message = heartbeat_puller.recv_string(zmq.NOBLOCK)
+                    message = heartbeat_responder.recv_string(zmq.NOBLOCK)  # Non-blocking receive
                     if message == "heartbeat_srv":
-                        self.console_utils.print("Received heartbeat from server.", 2)
-                        self.heartbeat_socket.send_string("heartbeat_ack")
+                        # self.console_utils.print("Received heartbeat from Heartbeat Service.", 2)
+                        heartbeat_responder.send_string("heartbeat_ack")
+                    else:
+                        self.console_utils.print(f"Unexpected heartbeat message: {message}", 3)
                 except zmq.Again:
-                    # zmq.Again is raised when using zmq.NOBLOCK and no messages are available
-                    time.sleep(0.1)  # Prevent tight looping when no messages are received
+                    time.sleep(0.1)  # Allow other threads to execute
                 except zmq.ZMQError as e:
                     self.console_utils.print(f"Unexpected ZMQ error in handle_heartbeats: {e}", 3)
         except zmq.ZMQError as e:
             self.console_utils.print(f"Critical error binding heartbeat socket: {e}", 3)
+        finally:
+            heartbeat_responder.close()
+            context.term()
+
     
     def receive_heartbeat(self):
         try:

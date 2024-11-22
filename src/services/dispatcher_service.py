@@ -331,7 +331,7 @@ class DispatcherService:
             heartbeat_responder = context.socket(zmq.REP)
             heartbeat_responder.bind(f"tcp://*:{self.heartbeat_3_port}")
 
-            self.console_utils.print(f"Listening for heartbeats on port {self.heartbeat_3_port}.", 2)
+            # self.console_utils.print(f"Listening for heartbeats on port {self.heartbeat_3_port}.", 2)
 
             while not self.stop_event.is_set():
                 try:
@@ -350,7 +350,6 @@ class DispatcherService:
         finally:
             heartbeat_responder.close()
             context.term()
-
     
     def receive_heartbeat(self):
         try:

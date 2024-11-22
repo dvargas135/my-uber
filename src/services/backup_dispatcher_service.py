@@ -362,20 +362,37 @@ class BackupDispatcherService:
                 heartbeat_puller.close()
     
     def receive_heartbeat_from_heartbeat_server(self):
+        """
+        Listens for activation and deactivation signals from the Heartbeat Service.
+        """
         try:
-            heartbeat_2_puller = self.zmq_utils.bind_pull_heartbeat_2_socket()
+            activation_puller = self.zmq_utils.context.socket(zmq.PULL)
+            activation_puller.bind(f"tcp://*:{self.heartbeat_2_port}")  # Ensure this port matches your configuration
+
+            self.console_utils.print(f"Listening for activation signals on port {self.heartbeat_2_port}.", 2)
+
             while not self.stop_event.is_set():
                 try:
-                    message = heartbeat_2_puller.recv_string(zmq.NOBLOCK)
-                    message = self.activation_socket.recv_string()
-                    if message == "deactivate_backup":
-                        self.main_dispatcher_offline = True
-                        self.console_utils.print(f"Main Dispatcher back online. Pausing Backup Dispatcher.", 3)
-                        return
+                    message = activation_puller.recv_string(zmq.NOBLOCK)
+                    if message == "activate_backup":
+                        if not self.main_dispatcher_offline:
+                            self.main_dispatcher_offline = True
+                            self.console_utils.print("Received activate signal. Taking over tasks as Backup Dispatcher.", 2)
+                            # Start tasks
+                            self.start_dispatcher_tasks()
+                    elif message == "deactivate_backup":
+                        if self.main_dispatcher_offline:
+                            self.main_dispatcher_offline = False
+                            self.console_utils.print("Received deactivate signal. Pausing Backup Dispatcher tasks.", 2)
+                            # Stop tasks
+                            self.stop_dispatcher_tasks()
+                except zmq.Again:
+                    time.sleep(0.1)  # Non-blocking loop
                 except zmq.ZMQError as e:
-                    self.console_utils.print(f"Backup deactivation error: {e}", 3)
-        except zmq.ZMQError as e:
-                    self.console_utils.print(f"Backup deactivation error: {e}", 3)
+                    self.console_utils.print(f"Error receiving heartbeat signal: {e}", 3)
+        finally:
+            activation_puller.close()
+
 
     def monitor_heartbeats(self):
         HEARTBEAT_INTERVAL = 5

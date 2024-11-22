@@ -29,28 +29,25 @@ class HeartbeatService:
         while True:
             try:
                 self.heartbeat_socket.send_string("heartbeat_srv")
-                if self.heartbeat_socket.poll(1000):
+                if self.heartbeat_socket.poll(1000):  # Wait for 1 second
                     response = self.heartbeat_socket.recv_string()
                     if response == "heartbeat_ack":
                         if not self.main_active:
-                            self.console_utils.print("Heartbeat successful: Dispatcher is active again.", level=2)
-                            self.signal_backup("deactivate_backup")
+                            # Main dispatcher is back online
+                            self.console_utils.print("Heartbeat successful: Main Dispatcher is active again.", level=2)
+                            self.signal_backup("deactivate_backup")  # Notify backup to pause
                             self.main_active = True
-                        else:
-                            # self.console_utils.print("Heartbeat successful: Dispatcher is active.", level=2)
                     else:
-                        if self.main_active:
-                            self.console_utils.print(f"Unexpected response from dispatcher: {response}", level=3)
-                            self.signal_backup("activate_backup")
-                            self.main_active = False
+                        self.console_utils.print(f"Unexpected response: {response}", level=3)
                 else:
                     if self.main_active:
-                        self.console_utils.print("Heartbeat failed: Dispatcher is inactive.", level=3)
-                        self.signal_backup("activate_backup")
+                        # Main dispatcher is inactive
+                        self.console_utils.print("Heartbeat failed: Main Dispatcher is inactive.", level=3)
+                        self.signal_backup("activate_backup")  # Notify backup to activate
                         self.main_active = False
             except zmq.ZMQError as e:
                 if self.main_active:
-                    self.console_utils.print(f"Heartbeat error: {e}", level=3)
+                    self.console_utils.print(f"ZMQ Heartbeat error: {e}", level=3)
                     self.signal_backup("activate_backup")
                     self.main_active = False
             except Exception as e:
@@ -59,7 +56,6 @@ class HeartbeatService:
                     self.signal_backup("activate_backup")
                     self.main_active = False
             time.sleep(5)
-
 
     def signal_backup(self, signal_type):
         try:

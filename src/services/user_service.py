@@ -5,6 +5,7 @@ import csv
 from threading import Thread, Event
 from src.config import DISPATCHER_IP, USER_REQ_PORT
 from src.utils.rich_utils import RichConsoleUtils
+from src.models.user_model import User
 
 class UserThread(Thread):
     def __init__(self, user_id, pos_x, pos_y, waiting_time, dispatcher_ip, backup_dispatcher_ip, user_req_port, backup_user_req_port, console_utils, stop_event):
@@ -97,12 +98,13 @@ class UserService:
                         pos_x = int(row['x'])
                         pos_y = int(row['y'])
                         waiting_time = int(row['waiting_time'])
-                        users.append((user_id, pos_x, pos_y, waiting_time))
+                        users.append(User(user_id, pos_x, pos_y, waiting_time))  # Create User objects
                     except ValueError as ve:
                         self.console_utils.print(f"Invalid data format in row: {row}. Error: {ve}", 3)
         except Exception as e:
             self.console_utils.print(f"Error reading users file: {e}", 3)
         return users
+
 
     def run(self):
         users = self.load_users()
@@ -110,10 +112,10 @@ class UserService:
         try:
             for user in users:
                 user_thread = UserThread(
-                    user_id=user[0],
-                    pos_x=user[1],
-                    pos_y=user[2],
-                    waiting_time=user[3],
+                    user_id=user.user_id,
+                    pos_x=user.pos_x,
+                    pos_y=user.pos_y,
+                    waiting_time=user.waiting_time,
                     dispatcher_ip=self.dispatcher_ip,
                     backup_dispatcher_ip=self.backup_dispatcher_ip,
                     user_req_port=self.user_req_port,

@@ -31,6 +31,8 @@ class DatabaseHandler:
     def get_cursor(self):
         self.connect()
         return self.local_storage.cursor
+    
+
 
     def get_connection(self):
         self.connect()
@@ -134,14 +136,26 @@ class DatabaseHandler:
         self.close()
 
     def get_available_taxis(self):
-        # self.connect()
         cursor = self.get_cursor()
         connection = self.get_connection()
-        query = "SELECT * FROM taxis WHERE status = %s AND connected = %s"
+        query = "SELECT taxi_id, pos_x, pos_y, speed, status, connected FROM taxis WHERE status = %s AND connected = %s"
         values = ("available", True)
         cursor.execute(query, values)
-        taxis = cursor.fetchall()
+        rows = cursor.fetchall()
         self.close()
+        
+        # Map rows to dictionaries
+        taxis = [
+            {
+                "taxi_id": row[0],
+                "pos_x": row[1],
+                "pos_y": row[2],
+                "speed": row[3],
+                "status": row[4],
+                "connected": row[5],
+            }
+            for row in rows
+        ]
         return taxis
     
     def update_taxi_connected_status(self, taxi_id, connected):
@@ -184,14 +198,21 @@ class DatabaseHandler:
         return taxis
 
     def get_taxi_by_id(self, taxi_id):
-        # self.connect()
         cursor = self.get_cursor()
-        connection = self.get_connection()
         query = "SELECT * FROM taxis WHERE taxi_id = %s"
         cursor.execute(query, (taxi_id,))
-        taxi = cursor.fetchone()
+        row = cursor.fetchone()
         self.close()
-        return taxi
+
+        if row:
+            # Map the database row to a dictionary
+            columns = [desc[0] for desc in cursor.description]
+            taxi = dict(zip(columns, row))
+            return taxi
+
+        return None  # Return None if no matching taxi is found
+
+
 
 # Example usage:
 # db_handler = DatabaseHandler(host="192.168.1.13", user="root", password="123456789", database="taxi_dispatch")

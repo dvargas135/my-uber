@@ -119,7 +119,6 @@ class DispatcherService:
             if responder:
                 responder.close()
 
-
     def handle_user_requests(self):
         responder = self.user_req_socket
         try:
@@ -154,25 +153,31 @@ class DispatcherService:
                             if assigned_taxi:
                                 with self.assignment_lock:
                                     # Double-check if the taxi is still available
-                                    if assigned_taxi.connected and assigned_taxi.status.lower() == "available":
+                                    if assigned_taxi['connected'] and assigned_taxi['status'].lower() == "available":
                                         # Assign the taxi in the database
-                                        self.db_handler.assign_taxi_to_user(user_id, assigned_taxi.taxi_id)
+                                        self.db_handler.assign_taxi_to_user(user_id, assigned_taxi['taxi_id'])
 
-                                        # Update in-memory taxi status
-                                        assigned_taxi.connected = False  # Mark as occupied
-                                        assigned_taxi.status = "unavailable"
+                                        # Update in-memory taxi status (if applicable)
+                                        assigned_taxi['connected'] = False  # Mark as occupied
+                                        assigned_taxi['status'] = "unavailable"
 
-                                        self.console_utils.print(f"Assigned Taxi {assigned_taxi.taxi_id} to User {user_id}", 2)
-                                        responder.send_string(f"assign_taxi {assigned_taxi.taxi_id}")
+                                        self.console_utils.print(f"Assigned Taxi {assigned_taxi['taxi_id']} to User {user_id}", 2)
+                                        responder.send_string(f"assign_taxi {assigned_taxi['taxi_id']}")
 
                                         # Optionally, notify the assigned taxi about the assignment
-                                        self.zmq_utils.publish_assignment(f"assign {assigned_taxi.taxi_id} {user_id}")
+                                        self.zmq_utils.publish_assignment(f"assign {assigned_taxi['taxi_id']} {user_id}")
 
                                         # Simulate the taxi being busy with the service
-                                        service_thread = Thread(target=self.simulate_service, args=(assigned_taxi.taxi_id, user_id, 5), daemon=True)
+                                        service_thread = Thread(
+                                            target=self.simulate_service,
+                                            args=(assigned_taxi['taxi_id'], user_id, 5),
+                                            daemon=True,
+                                        )
                                         service_thread.start()
                                     else:
-                                        self.console_utils.print(f"Taxi {assigned_taxi.taxi_id} became unavailable during assignment.", 3)
+                                        self.console_utils.print(
+                                            f"Taxi {assigned_taxi['taxi_id']} became unavailable during assignment.", 3
+                                        )
                                         responder.send_string("no_taxi_available")
                             else:
                                 self.console_utils.print(f"No available taxis for User {user_id}", 3)
@@ -194,36 +199,34 @@ class DispatcherService:
 
     def find_nearest_available_taxi(self, user_x, user_y):
         with self.assignment_lock:
-            # Fetch available taxis from the database
             available_taxis = self.db_handler.get_available_taxis()
             if not available_taxis:
                 return None
             # Calculate Manhattan distance and sort
-            available_taxis.sort(key=lambda taxi: (abs(taxi.pos_x - user_x) + abs(taxi.pos_y - user_y), taxi.taxi_id))
+            available_taxis.sort(
+                key=lambda taxi: (abs(taxi['pos_x'] - user_x) + abs(taxi['pos_y'] - user_y), taxi['taxi_id'])
+            )
             nearest_taxi = available_taxis[0]  # Get the closest taxi
             return nearest_taxi
-
 
     def simulate_service(self, taxi_id, user_id, duration):
         self.console_utils.print(f"Taxi {taxi_id} is servicing User {user_id} for {duration} seconds.", 2)
         time.sleep(duration)
         # After service completion, mark the taxi as available and reset position
-        # if taxi_id in self.system.taxis:
-        if self.db_handler.taxi_exists(taxi_id):
-            # taxi = self.system.taxis[taxi_id]
-            taxi = self.db_handler.get_taxi_by_id(taxi_id)
-            taxi.status = "available"
-            taxi.connected = True
-            taxi.pos_x = taxi.initial_pos_x
-            taxi.pos_y = taxi.initial_pos_y
+        taxi = self.db_handler.get_taxi_by_id(taxi_id)
+        if taxi:
+            taxi['status'] = "available"
+            taxi['connected'] = True
+            taxi['pos_x'] = taxi['initial_pos_x']
+            taxi['pos_y'] = taxi['initial_pos_y']
             with self.heartbeat_lock:
                 self.heartbeat_timestamps[taxi_id] = time.time()
             self.refresh_table()
-            self.console_utils.print(f"Taxi {taxi_id} has completed service for User {user_id} and is now available at ({taxi.pos_x}, {taxi.pos_y}).", 2)
-            
-            # Update the database to mark the taxi as available and reset position
+            self.console_utils.print(
+                f"Taxi {taxi_id} has completed service for User {user_id} and is now available at ({taxi['pos_x']}, {taxi['pos_y']}).", 2
+            )
             self.db_handler.mark_taxi_available(taxi_id)
-            self.db_handler.update_taxi_position(taxi_id, taxi.pos_x, taxi.pos_y)
+            self.db_handler.update_taxi_position(taxi_id, taxi['pos_x'], taxi['pos_y'])
         else:
             self.console_utils.print(f"Taxi {taxi_id} not found during service simulation.", 3)
 

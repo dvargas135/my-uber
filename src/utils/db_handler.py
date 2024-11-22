@@ -31,8 +31,6 @@ class DatabaseHandler:
     def get_cursor(self):
         self.connect()
         return self.local_storage.cursor
-    
-
 
     def get_connection(self):
         self.connect()
@@ -48,19 +46,24 @@ class DatabaseHandler:
         self.close()
 
     def add_taxi(self, taxi_id, pos_x, pos_y, speed, status):
-        # self.connect()
         cursor = self.get_cursor()
         connection = self.get_connection()
+        
         query = """
-        INSERT INTO taxis (taxi_id, pos_x, pos_y, speed, status) 
-        VALUES (%s, %s, %s, %s, %s) 
-        ON DUPLICATE KEY UPDATE pos_x = VALUES(pos_x), pos_y = VALUES(pos_y), speed = VALUES(speed), status = VALUES(status)
+        INSERT INTO taxis (taxi_id, pos_x, pos_y, speed, status, initial_pos_x, initial_pos_y)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            pos_x = VALUES(pos_x),
+            pos_y = VALUES(pos_y),
+            speed = VALUES(speed),
+            status = VALUES(status)
         """
-        values = (taxi_id, pos_x, pos_y, speed, status)
+        # Use `pos_x` and `pos_y` as initial values only during insertion
+        values = (taxi_id, pos_x, pos_y, speed, status, pos_x, pos_y)
         cursor.execute(query, values)
         connection.commit()
         self.close()
-    
+
     def update_taxi_position(self, taxi_id, pos_x, pos_y):
         # self.connect()
         cursor = self.get_cursor()

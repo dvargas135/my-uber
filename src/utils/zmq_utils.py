@@ -86,9 +86,14 @@ class ZMQUtils:
         self.heartbeat_responder.bind(f"tcp://*:{self.heartbeat_3_port}")
         return self.heartbeat_responder
     
+    # def publish_assignment(self, message):
+    #     pub_socket = self.context.socket(zmq.PUB)
+    #     pub_socket.connect(f"tcp://{self.dispatcher_ip}:{self.pub_port}")
+    #     pub_socket.send_string(message)
+    #     pub_socket.close()
     def publish_assignment(self, message):
         pub_socket = self.context.socket(zmq.PUB)
-        pub_socket.connect(f"tcp://{self.dispatcher_ip}:{self.pub_port}")
+        pub_socket.bind(f"tcp://*:{self.pub_port}")
         pub_socket.send_string(message)
         pub_socket.close()
     

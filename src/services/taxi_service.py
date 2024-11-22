@@ -15,6 +15,8 @@ class TaxiService:
     def __init__(self, taxi_id, pos_x, pos_y, speed, N, M, status):
         self.grid = Grid(N, M)
         self.taxi = Taxi(taxi_id, self.grid.rows, self.grid.cols, pos_x, pos_y, speed, status)
+        self.dispatcher_ip = DISPATCHER_IP
+        self.backup_dispatcher_ip = BACKUP_DISPATCHER_IP
 
         self.console_utils = RichConsoleUtils()
         self.zmq_utils = ZMQUtils(DISPATCHER_IP, PUB_PORT, SUB_PORT, REP_PORT, PULL_PORT, HEARTBEAT_PORT, HEARTBEAT_2_PORT)
@@ -26,6 +28,8 @@ class TaxiService:
         self.socket_ready = Condition()
         self.socket_initialized = False
         self.connected = False
+        self.main_dispatcher_offline = False
+        self.pub_port = PUB_PORT
     
     def connect_to_backup_dispatcher(self, reconnect=False):
         self.console_utils.print("Main dispatcher is offline, connecting to backup server")
@@ -142,6 +146,7 @@ class TaxiService:
                     time.sleep(2)
 
                     if retry_count == 5:
+                        self.main_dispatcher_offline = True
                         self.connect_to_backup_dispatcher()
 
                 requester.close()
@@ -262,15 +267,14 @@ class TaxiService:
         except zmq.ZMQError as e:
             self.console_utils.print(f"Error receiving message: {e}", 3, end="\r")
 
-
     def subscribe_to_assignments(self):
-        subscriber = self.context.socket(zmq.SUB)
-        subscriber.connect(f"tcp://{self.dispatcher_ip}:{PUB_PORT}")
+        subscriber = self.zmq_utils.context.socket(zmq.SUB)
+        subscriber.connect(f"tcp://{self.dispatcher_ip}:{self.pub_port}")
         subscriber.setsockopt_string(zmq.SUBSCRIBE, f"assign {self.taxi.taxi_id}")
         while not self.stop_event.is_set():
             try:
                 message = subscriber.recv_string(flags=zmq.NOBLOCK)
-                if message.startswith(f"assign {self.taxi.taxi_id}"):
+                if message.startswith(f"assign_taxi {self.taxi.taxi_id}"):
                     _, taxi_id, user_id = message.split()
                     self.handle_assignment(user_id)
             except zmq.Again:
@@ -281,7 +285,6 @@ class TaxiService:
 
     def handle_assignment(self, user_id):
         self.console_utils.print(f"Taxi {self.taxi.taxi_id} assigned to User {user_id}", 2)
-        # Handle the ride assignment (e.g., simulate ride duration)
     
     def send_heartbeat(self):
         while not self.stop_event.is_set():
@@ -297,7 +300,6 @@ class TaxiService:
                 self.console_utils.print(f"Unexpected error in send_heartbeat: {e}", 3)
                 time.sleep(5)
 
-
     def run(self):
         if not validate_grid(self.grid.rows, self.grid.cols, self.console_utils) or not validate_initial_position(self.taxi.pos_x, self.taxi.pos_y, self.taxi.grid.rows, self.taxi.grid.cols, self.taxi.taxi_id, self.console_utils) or not validate_speed(self.taxi.speed, self.taxi.taxi_id, self.console_utils):
             self.console_utils.print(f"Taxi {self.taxi.taxi_id} failed to start due to invalid parameters.", 3)
@@ -309,19 +311,23 @@ class TaxiService:
             publish_position_thread = Thread(target=self.publish_position)
             receive_commands_thread = Thread(target=self.receive_commands)
             heartbeat_thread = Thread(target=self.send_heartbeat)
+            subscribe_to_assignments_thread = Thread(target=self.subscribe_to_assignments)
 
             publish_position_thread.daemon = False
             receive_commands_thread.daemon = False
             heartbeat_thread.daemon = False
+            subscribe_to_assignments_thread.daemon = False
 
             publish_position_thread.start()
             receive_commands_thread.start()
             heartbeat_thread.start()
+            subscribe_to_assignments_thread.start()
 
             while not self.stop_event.is_set():
                 publish_position_thread.join(timeout=1)
                 receive_commands_thread.join(timeout=1)
                 heartbeat_thread.join(timeout=1)
+                subscribe_to_assignments_thread.join(timeout=1)
             
         except KeyboardInterrupt:
             self.console_utils.print(f"Taxi {self.taxi.taxi_id} process interrupted by user, terminating process...", 2)

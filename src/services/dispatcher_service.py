@@ -143,34 +143,25 @@ class DispatcherService:
                                 continue
 
                             self.console_utils.print(f"Received ride request from User {user_id} at ({user_x}, {user_y})", 2)
-
-                            # Log user request in the database
-                            self.db_handler.add_user_request(user_id, user_x, user_y, waiting_time=30)  # Example waiting_time
-
-                            # Find the nearest available taxi
+                            self.db_handler.add_user_request(user_id, user_x, user_y, waiting_time=30)
                             assigned_taxi = self.find_nearest_available_taxi(user_x, user_y)
 
                             if assigned_taxi:
                                 with self.assignment_lock:
-                                    # Double-check if the taxi is still available
                                     if assigned_taxi['connected'] and assigned_taxi['status'].lower() == "available":
-                                        # Assign the taxi in the database
                                         self.db_handler.assign_taxi_to_user(user_id, assigned_taxi['taxi_id'])
 
-                                        # Update in-memory taxi status (if applicable)
-                                        assigned_taxi['connected'] = False  # Mark as occupied
+                                        assigned_taxi['connected'] = True
                                         assigned_taxi['status'] = "unavailable"
 
                                         self.console_utils.print(f"Assigned Taxi {assigned_taxi['taxi_id']} to User {user_id}", 2)
                                         responder.send_string(f"assign_taxi {assigned_taxi['taxi_id']}")
 
-                                        # Optionally, notify the assigned taxi about the assignment
                                         self.zmq_utils.publish_assignment(f"assign {assigned_taxi['taxi_id']} {user_id}")
 
-                                        # Simulate the taxi being busy with the service
                                         service_thread = Thread(
                                             target=self.simulate_service,
-                                            args=(assigned_taxi['taxi_id'], user_id, 5),
+                                            args=(assigned_taxi['taxi_id'], user_id, 30),
                                             daemon=True,
                                         )
                                         service_thread.start()
